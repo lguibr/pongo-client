@@ -19,9 +19,9 @@ This directory contains the React frontend for the PonGo game, built with Vite.
 
 ## Getting Started
 
-1.  **Navigate to the frontend directory:**
+1.  **Navigate to the pongo-client directory:**
     ```bash
-    cd frontend
+    cd pongo-client
     ```
 2.  **Install dependencies:**
     ```bash
