@@ -1,50 +1,71 @@
 // File: frontend/src/components/Brick.tsx
 import styled from 'styled-components';
 import { Cell, BrickData } from '../types/game';
-import { CELL_SIZE } from '../config';
+import { useEffect } from 'react'; // Import useEffect for logging
 
-// Google Colors - Adjusted for more life levels potentially
-const BRICK_COLORS = [
-  '#DB4437', // Red (Life 1)
-  '#F4B400', // Yellow (Life 2)
-  '#0F9D58', // Darker Green (Life 3)
-  '#4285F4', // Blue (Life 4)
-  '#7E57C2', // Purple (Life 5+) - Example
+// Color constants remain the same...
+const BRICK_LIFE_COLORS = [
+  '#4285F4', '#34A853', '#FBBC05', '#EA4335', '#DB4437', '#C53929',
 ];
-const BORDER_COLOR = '#444'; // Dark grey border
-const MAX_LIFE_FOR_OPACITY = 4; // Base opacity calculation on this max life
+const BORDER_COLOR = '#333';
+const MAX_LIFE_FOR_SCALE = 6;
 
 interface BrickProps {
   $cellData: Cell;
+  $cellSize: number; // Accept cell size as a prop
 }
 
-// Use life to determine color
 const getBrickColor = (data: BrickData | null): string => {
-  if (!data || data.life <= 0) return 'transparent'; // Handle null data or 0 life
-  const lifeIndex = Math.max(0, data.life - 1); // Life 1 -> index 0
-  return BRICK_COLORS[Math.min(lifeIndex, BRICK_COLORS.length - 1)]; // Use last color for higher life
+  if (!data || data.life <= 0) return 'transparent';
+  const lifeIndex = Math.max(0, data.life - 1);
+  return BRICK_LIFE_COLORS[Math.min(lifeIndex, BRICK_LIFE_COLORS.length - 1)];
 };
 
-// Calculate opacity based on life
 const getBrickOpacity = (data: BrickData | null): number => {
   if (!data || data.life <= 0) return 0;
-  // Ensure opacity doesn't go below a minimum threshold (e.g., 0.3)
-  // and doesn't exceed 1.0
-  return Math.max(0.3, Math.min(1.0, data.life / MAX_LIFE_FOR_OPACITY));
+  const scale = MAX_LIFE_FOR_SCALE > 1 ? (MAX_LIFE_FOR_SCALE - 1) : 1;
+  const opacity = 0.4 + (0.6 * (Math.min(data.life, MAX_LIFE_FOR_SCALE) - 1)) / scale;
+  return Math.max(0.4, Math.min(1.0, opacity));
 };
 
-
-const BrickComponent = styled.div<BrickProps>`
+// Use the $cellSize prop for dimensions and positioning
+const StyledBrick = styled.div<{ $bgColor: string; $opacity: number; $width: number; $height: number; $left: number; $top: number; }>`
   position: absolute;
-  background-color: ${(props) => getBrickColor(props.$cellData.data)};
-  width: ${CELL_SIZE}px;
-  height: ${CELL_SIZE}px;
-  left: ${(props) => props.$cellData.x * CELL_SIZE}px;
-  top: ${(props) => props.$cellData.y * CELL_SIZE}px;
+  background-color: ${(props) => props.$bgColor};
+  opacity: ${(props) => props.$opacity};
+  width: ${(props) => props.$width}px;
+  height: ${(props) => props.$height}px;
+  left: ${(props) => props.$left}px;
+  top: ${(props) => props.$top}px;
   border: 1px solid ${BORDER_COLOR};
-  box-sizing: border-box; /* Include border in size */
-  opacity: ${(props) => getBrickOpacity(props.$cellData.data)};
-  transition: background-color 0.1s ease-in-out, opacity 0.1s ease-in-out; /* Smooth transitions */
+  box-sizing: border-box;
+  transition: background-color 0.15s ease-in-out, opacity 0.15s ease-in-out;
+  will-change: background-color, opacity;
 `;
+
+const BrickComponent: React.FC<BrickProps> = ({ $cellData, $cellSize }) => {
+  const leftPos = $cellData.x * $cellSize;
+  const topPos = $cellData.y * $cellSize;
+  const bgColor = getBrickColor($cellData.data);
+  const opacity = getBrickOpacity($cellData.data);
+
+  // Log calculated values
+  useEffect(() => {
+    console.log(`Brick [${$cellData.x},${$cellData.y}]: cellSize=${$cellSize}, left=${leftPos}, top=${topPos}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [$cellSize, $cellData.x, $cellData.y]); // Log when these change
+
+  return (
+    <StyledBrick
+      $bgColor={bgColor}
+      $opacity={opacity}
+      $width={$cellSize}
+      $height={$cellSize}
+      $left={leftPos}
+      $top={topPos}
+    />
+  );
+};
+
 
 export default BrickComponent;

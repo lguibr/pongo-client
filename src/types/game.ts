@@ -27,9 +27,9 @@ export interface Canvas {
 
 // Simplified Player info sent in GameState
 export interface Player {
-  index: number;
+  index: number; // Player index (0-3, corresponds to array index)
   id: string;
-  color: [number, number, number]; // RGB color array
+  color: [number, number, number]; // Backend RGB (frontend uses index for specific palette)
   score: number;
 }
 
@@ -38,11 +38,10 @@ export interface Paddle {
   y: number; // Top-left Y coordinate
   width: number;
   height: number;
-  index: number; // Player index (0-3)
+  index: number; // Player index (0-3, corresponds to array index)
   direction: string; // Internal backend state ("left", "right", "")
-  vx: number; // Current horizontal velocity (useful for frontend effects?)
-  vy: number; // Current vertical velocity (useful for frontend effects?)
-  // velocity field removed as it's internal backend config
+  vx: number; // Current horizontal velocity
+  vy: number; // Current vertical velocity
 }
 
 export interface Ball {
@@ -52,21 +51,24 @@ export interface Ball {
   vy: number; // Velocity Y
   radius: number;
   id: number; // Unique ID
-  ownerIndex: number; // Index of the player who last hit it
+  ownerIndex: number; // Owning player index (0-3) or potentially another value (e.g., -1) if unowned.
   phasing: boolean; // If true, ignores brick collisions temporarily
   mass: number;
-  isPermanent: boolean; // Added field
+  isPermanent: boolean;
 }
 
 // Represents the overall state received from the backend WebSocket
 export interface GameState {
   canvas: Canvas | null;
+  // Note: Frontend assumes 0-based indexing for players/paddles (0=Blue, 1=Green, etc.)
+  // The backend might use 1-based indexing in its arrays (index 0 null).
+  // Frontend components rely on the 'index' field within Player/Paddle objects.
   players: (Player | null)[];
   paddles: (Paddle | null)[];
-  balls: (Ball | null)[]; // Backend now sends filtered list, but keep null check just in case
+  balls: (Ball | null)[];
 }
 
 // Message sent from frontend to backend for paddle movement
 export interface DirectionMessage {
-  direction: "ArrowLeft" | "ArrowRight" | "Stop"; // Add "Stop"
+  direction: "ArrowLeft" | "ArrowRight" | "Stop";
 }

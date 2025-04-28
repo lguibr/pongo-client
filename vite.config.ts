@@ -9,7 +9,7 @@ export default defineConfig({
     // proxy: {
     //   // Proxy WebSocket connections on /subscribe to backend
     //   '/subscribe': {
-    //     target: 'ws://localhost:3001',
+    //     target: 'ws://localhost:8080',
     //     ws: true,
     //   },
     // },

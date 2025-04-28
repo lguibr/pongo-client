@@ -3,192 +3,160 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import styled, { createGlobalStyle } from 'styled-components';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import GameCanvas from './components/GameCanvas';
-import { WEBSOCKET_URL } from './config';
+import { WEBSOCKET_URL } from './utils/constants';
 import { DirectionMessage, GameState } from './types/game';
-// Removed: import './App.css';
 
 const GlobalStyle = createGlobalStyle`
-  * {
-    box-sizing: border-box;
-  }
-
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body, #root {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden; /* Prevent scrollbars due to slight overflows */
+    width: 100vw; height: 100vh;
+    background: #000; overflow: hidden;
   }
-
   body {
-    background-color: #1a1a1a; /* Dark background */
-    color: white;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
       sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    display: flex;
-    justify-content: center;
-    align-items: center;
   }
 `;
 
 const AppContainer = styled.div`
-  text-align: center;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 10px; /* Add some padding around the content */
+  display: flex; flex-direction: column;
+  width: 100%; height: 100%;
 `;
 
 const Header = styled.header`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 10px; /* Space between header and canvas */
-    color: #E0E0E0; /* Light grey text */
+  height: 50px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10;
 `;
 
 const Logo = styled.img`
-    height: 40px; /* Adjust logo size */
-    margin-right: 15px;
+  height: 30px; margin-right: 10px;
 `;
 
-const Instructions = styled.p`
-  margin-top: 15px; /* Space above instructions */
-  color: #aaa; /* Lighter grey for instructions */
-  font-size: 0.9em;
-`
+const Title = styled.h1`
+  font-size: 1.5em; font-weight: 500; color: #b0b0b0;
+`;
 
+const CanvasArea = styled.div`
+  position: relative;
+  flex: 1; display: flex; justify-content: center; align-items: center;
+  touch-action: none;
+`;
 
-function App() {
+const ScoreBoard = styled.div`
+  position: absolute; top: 10px; left: 10px; z-index: 20;
+  background: rgba(0,0,0,0.6); padding: 5px 10px;
+  border-radius: 3px; font-size: 0.9em; color: #fff;
+`;
+
+const CanvasWrapper = styled.div<{ $size: number; $rotate: number }>`
+  width: ${(p) => p.$size}px;
+  height: ${(p) => p.$size}px;
+  background: #000;
+  box-shadow: 0 0 4px rgba(255,255,255,0.2);
+  transform: rotate(${(p) => p.$rotate}deg);
+  transform-origin: center center;
+`;
+
+const useWindowSize = () => {
+  const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+  useEffect(() => {
+    const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return size;
+};
+
+export default function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const pressedKeys = useRef(new Set<string>());
-  const lastSentDirection = useRef<DirectionMessage['direction'] | null>(null);
+  const lastDir = useRef<DirectionMessage['direction'] | null>(null);
+  const { w: winW, h: winH } = useWindowSize();
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
-    onOpen: () => {
-      console.log('WS: Connection Opened');
-      pressedKeys.current.clear(); // Reset keys on new connection
-      lastSentDirection.current = null; // Reset last sent direction
-    },
-    onClose: () => {
-      console.log('WS: Connection Closed');
-      setGameState(null); // Clear game state on close
-      pressedKeys.current.clear(); // Reset keys
-      lastSentDirection.current = null;
-    },
-    onError: (event) => console.error('WS: Error:', event),
-    shouldReconnect: () => true, // Attempt to reconnect automatically
-    reconnectInterval: 3000, // Reconnect attempt interval
-    filter: (message): message is MessageEvent<string> => {
-      // Ensure message data is a string starting with '{' (basic JSON check)
-      return message.data && typeof message.data === 'string' && message.data.startsWith('{');
-    },
+    shouldReconnect: () => true,
+    reconnectInterval: 3000,
+    filter: (msg): msg is MessageEvent<string> =>
+      typeof msg.data === 'string' && msg.data.startsWith('{'),
   });
 
-  // Process incoming WebSocket messages
+  // Recebe estado do jogo
   useEffect(() => {
-    if (lastMessage !== null) {
-      try {
-        const data = JSON.parse(lastMessage.data);
-        // Basic validation for GameState structure
-        if (data && typeof data === 'object' && data.players && data.paddles && data.balls) {
-          setGameState(data as GameState);
-        } else {
-          console.warn("WS: Received data doesn't match expected GameState structure:", data);
-        }
-      } catch (e) {
-        console.error("WS: Failed to parse message:", e, "Raw data:", lastMessage.data);
+    if (!lastMessage) return;
+    try {
+      const d = JSON.parse(lastMessage.data);
+      if (d.canvas?.canvasSize > 0 && Array.isArray(d.canvas.grid)) {
+        setGameState(d);
       }
-    }
+    } catch { }
   }, [lastMessage]);
 
-  // Map react-use-websocket ReadyState to a simpler status string
-  const mapReadyStateToStatus = (state: ReadyState): 'connecting' | 'open' | 'closing' | 'closed' | 'error' => {
-    switch (state) {
+  const status = (() => {
+    switch (readyState) {
       case ReadyState.CONNECTING: return 'connecting';
       case ReadyState.OPEN: return 'open';
       case ReadyState.CLOSING: return 'closing';
       case ReadyState.CLOSED: return 'closed';
-      case ReadyState.UNINSTANTIATED: return 'connecting'; // Treat as connecting initially
-      default: return 'closed'; // Fallback
+      default: return 'error';
     }
-  };
+  })() as 'connecting' | 'open' | 'closing' | 'closed' | 'error';
 
-  const connectionStatus = mapReadyStateToStatus(readyState);
+  const sendDir = useCallback((dir: DirectionMessage['direction']) => {
+    if (status !== 'open' || dir === lastDir.current) return;
+    sendMessage(JSON.stringify({ direction: dir }));
+    lastDir.current = dir;
+  }, [sendMessage, status]);
 
-  // Send paddle direction updates to the backend
-  const sendDirection = useCallback((direction: DirectionMessage['direction']) => {
-    if (connectionStatus === 'open') {
-      // Only send if the direction has actually changed
-      if (direction !== lastSentDirection.current) {
-        const message: DirectionMessage = { direction };
-        console.log("WS: Sending direction:", message);
-        sendMessage(JSON.stringify(message));
-        lastSentDirection.current = direction; // Update last sent direction
-      }
-    } else {
-      console.warn("WS: Cannot send direction, connection not open. Status:", connectionStatus);
-    }
-  }, [sendMessage, connectionStatus]); // Depends on sendMessage and connectionStatus
+  // Índice do player (aquele cujo paddle != null)
+  const myIndex = gameState?.paddles.findIndex(p => p !== null) ?? 2;
 
-  // Handle keyboard input for paddle movement
+  // Rotação: myIndex * 90° (CW)
+  let rotateDeg = (myIndex * 90) % 360;
+  // Rotação: 360° – (myIndex×90°), para que cada um fique embaixo
+  rotateDeg = (360 +90  - myIndex * 90) % 360;
+
+  // Input handler (teclado / touch)
+  const handleUserDirection = useCallback((dir: DirectionMessage['direction']) => {
+    sendDir(dir);
+  }, [sendDir]);
+
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Ignore if connection isn't open or if it's a key repeat event
-      if (connectionStatus !== 'open' || event.repeat) return;
-
-      const key = event.key;
-      if (key === 'ArrowLeft' || key === 'ArrowRight') {
-        // Avoid redundant adds if key is already considered pressed
-        if (pressedKeys.current.has(key)) {
-          return;
-        }
-        pressedKeys.current.add(key);
-        // Send the direction of the key that was just pressed
-        sendDirection(key);
-      }
+    const down = (e: KeyboardEvent) => {
+      if (status !== 'open' || e.repeat) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') handleUserDirection(e.key);
     };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (connectionStatus !== 'open') return;
-
-      const key = event.key;
-      if (key === 'ArrowLeft' || key === 'ArrowRight') {
-        pressedKeys.current.delete(key); // Remove the released key
-
-        let newDirection: DirectionMessage['direction'] = 'Stop'; // Default to Stop
-
-        // Determine the new direction based on remaining pressed keys
-        if (key === 'ArrowLeft' && pressedKeys.current.has('ArrowRight')) {
-          newDirection = 'ArrowRight'; // If left released, but right still held
-        } else if (key === 'ArrowRight' && pressedKeys.current.has('ArrowLeft')) {
-          newDirection = 'ArrowLeft'; // If right released, but left still held
-        }
-        // If no relevant keys are pressed, newDirection remains 'Stop'
-
-        sendDirection(newDirection);
-      }
+    const up = (e: KeyboardEvent) => {
+      if (status !== 'open') return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') handleUserDirection('Stop');
     };
-
-    // Add event listeners
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    // Cleanup function
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      // Ensure paddle stops moving if component unmounts or connection closes mid-movement
-      if (connectionStatus === 'open' && lastSentDirection.current !== 'Stop') {
-        sendDirection('Stop');
-      }
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      handleUserDirection('Stop');
     };
-  }, [sendDirection, connectionStatus]); // Re-run if sendDirection or connectionStatus changes
+  }, [handleUserDirection, status]);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (status !== 'open') return;
+    const x = e.touches[0].clientX;
+    const dead = winW * 0.15;
+    if (x < winW / 2 - dead) handleUserDirection('ArrowLeft');
+    else if (x > winW / 2 + dead) handleUserDirection('ArrowRight');
+  };
+  const handleTouchEnd = () => status === 'open' && handleUserDirection('Stop');
+
+  // Calcula tamanho do canvas
+  const HEADER_H = 50, GAP = 20;
+  const availW = winW - GAP, availH = winH - HEADER_H - GAP;
+  const size = Math.max(100, Math.min(availW, availH));
+  const logical = gameState?.canvas?.canvasSize ?? 0;
+  const scale = logical > 0 ? size / logical : 1;
 
   return (
     <>
@@ -196,13 +164,31 @@ function App() {
       <AppContainer>
         <Header>
           <Logo src="/bitmap.png" alt="PonGo Logo" />
-          <h1>PonGo</h1>
+          <Title>PonGo</Title>
         </Header>
-        <GameCanvas gameState={gameState} wsStatus={connectionStatus} />
-        <Instructions>Hold Left/Right Arrow Keys to move. Release to stop.</Instructions>
+        <CanvasArea
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <ScoreBoard>
+            {gameState?.players
+              .filter((p): p is Exclude<typeof p, null> => p !== null)
+              .map(p => <div key={p.index}>P{p.index}: {p.score}</div>)
+            }
+          </ScoreBoard>
+          <CanvasWrapper $size={size} $rotate={rotateDeg}>
+            <GameCanvas
+              canvasData={gameState?.canvas ?? null}
+              players={gameState?.players ?? []}
+              paddles={gameState?.paddles ?? []}
+              balls={gameState?.balls ?? []}
+              wsStatus={status}
+              scaleFactor={scale}
+              hideScore
+            />
+          </CanvasWrapper>
+        </CanvasArea>
       </AppContainer>
     </>
   );
 }
-
-export default App;

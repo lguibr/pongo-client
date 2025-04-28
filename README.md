@@ -1,11 +1,16 @@
-
 # PonGo Frontend
 
 <p align="center">
   <img src="bitmap.png" alt="Logo" width="300"/>
 </p>
 
-This directory contains the React frontend for the PonGo game, built with Vite.
+This directory contains the React frontend for the PonGo game, built with Vite. It displays the game state received from the backend via WebSockets and handles user input for paddle control.
+
+## Visual Style
+
+*   **Paddles:** Colored based on player index using the Google color palette (Blue, Green, Yellow, Red).
+*   **Balls:** Colored based on the owning player's paddle color. Unowned balls are white. Balls feature a simple trailing effect for visual feedback on movement.
+*   **Bricks:** Colored based on remaining life using a divergent scale (Blue -> Green -> Yellow -> Red). Opacity also increases with higher life.
 
 ## Tech Stack
 
@@ -34,7 +39,7 @@ This directory contains the React frontend for the PonGo game, built with Vite.
     This will typically start the frontend on `http://localhost:5173`.
 
 4.  **Ensure the Go backend is running:**
-    The backend server (usually on `http://localhost:3001`) must be running for the frontend to connect via WebSockets. See the [Backend README](../backend/README.md) for setup instructions.
+    The backend server (usually on `https://pongo-967328387581.us-central1.run.app/`) must be running for the frontend to connect via WebSockets. See the [Backend README](../backend/README.md) for setup instructions.
 
 ## Available Scripts
 

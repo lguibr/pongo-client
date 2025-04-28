@@ -1,25 +1,31 @@
 // File: frontend/src/components/GameCanvas.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import styled from 'styled-components';
-import { GameState } from '../types/game';
-import { CANVAS_SIZE } from '../config';
+import { Player, Paddle as PaddleType, Ball as BallType, Canvas as CanvasData, Cell } from '../types/game';
 import Paddle from './Paddle';
 import Ball from './Ball';
 import Brick from './Brick';
 
 interface GameCanvasProps {
-  gameState: GameState | null;
+  canvasData: CanvasData | null;
+  players: (Player | null)[];
+  paddles: (PaddleType | null)[];
+  balls: (BallType | null)[];
   wsStatus: 'connecting' | 'open' | 'closing' | 'closed' | 'error';
+  scaleFactor: number;
+  hideScore?: boolean;
 }
 
-const CanvasContainer = styled.div`
-  position: relative; /* Crucial for absolute positioning of children */
-  width: ${CANVAS_SIZE}px;
-  height: ${CANVAS_SIZE}px;
-  background-color: #000; /* Black background for the canvas */
-  border: 2px solid #555; /* Optional border */
-  overflow: hidden; /* Hide anything slightly outside */
-  margin: auto; /* Center horizontally if parent allows */
+const CanvasContainer = styled.div<{ $width: number; $height: number; $scale: number }>`
+  position: relative;
+  width: ${(p) => p.$width}px;
+  height: ${(p) => p.$height}px;
+  background-color: #000;
+  overflow: hidden;
+  transform: scale(${(p) => p.$scale});
+  transform-origin: top left;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 `;
 
 const StatusMessage = styled.div`
@@ -29,10 +35,10 @@ const StatusMessage = styled.div`
   transform: translate(-50%, -50%);
   color: white;
   font-size: 1.5em;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgba(0,0,0,0.7);
   padding: 10px 20px;
   border-radius: 5px;
-  z-index: 10; /* Ensure it's above game elements */
+  z-index: 10;
 `;
 
 const Scoreboard = styled.div`
@@ -40,7 +46,7 @@ const Scoreboard = styled.div`
   top: 10px;
   left: 10px;
   color: white;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0,0,0,0.6);
   padding: 5px 10px;
   border-radius: 3px;
   font-size: 0.9em;
@@ -48,64 +54,68 @@ const Scoreboard = styled.div`
   text-align: left;
 `;
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, wsStatus }) => {
+const GameCanvas: React.FC<GameCanvasProps> = ({
+  canvasData,
+  players,
+  paddles,
+  balls,
+  wsStatus,
+  scaleFactor,
+  hideScore = false,
+}) => {
+  const logicalWidth = canvasData?.canvasSize ?? 0;
+  const cellSize = canvasData && canvasData.canvasSize > 0 && canvasData.gridSize > 0
+    ? canvasData.canvasSize / canvasData.gridSize
+    : 0;
+
   const renderStatus = () => {
     switch (wsStatus) {
-      case 'connecting':
-        return <StatusMessage>Connecting...</StatusMessage>;
-      case 'closed':
-        return <StatusMessage>Disconnected</StatusMessage>;
-      case 'error':
-        return <StatusMessage>Connection Error</StatusMessage>;
-      case 'closing':
-        return <StatusMessage>Closing...</StatusMessage>;
+      case 'connecting': return <StatusMessage>Connecting...</StatusMessage>;
+      case 'closed': return <StatusMessage>Disconnected</StatusMessage>;
+      case 'error': return <StatusMessage>Connection Error</StatusMessage>;
+      case 'closing': return <StatusMessage>Closing...</StatusMessage>;
       case 'open':
-        if (!gameState || !gameState.canvas) { // Check for canvas as well
-          return <StatusMessage>Waiting for game state...</StatusMessage>;
-        }
-        return null; // Game state received, no status message needed
-      default:
+        if (!canvasData) return <StatusMessage>Waiting for game state...</StatusMessage>;
         return null;
+      default: return null;
     }
   };
 
   const renderScores = () => {
-    if (!gameState || !gameState.players) return null;
+    if (hideScore) return null;
     return (
       <Scoreboard>
-        {gameState.players.map((player, index) =>
-          player ? ( // Check if player is not null
-            <div key={player.id || index} style={{ color: `rgb(${player.color.join(',')})` }}>
-              P{index}: {player.score}
-            </div>
-          ) : null // Render nothing for null player slots
-        )}
+        {players.filter((p): p is Player => p !== null).map((p) => (
+          <div key={p.index}>
+            P{p.index}: {p.score}
+          </div>
+        ))}
       </Scoreboard>
     );
   };
 
+  const canRenderGame = wsStatus === 'open' && canvasData && Array.isArray(canvasData.grid) && cellSize > 0;
+
   return (
-    <CanvasContainer>
+    <CanvasContainer $width={logicalWidth} $height={logicalWidth} $scale={scaleFactor}>
       {renderStatus()}
-      {gameState && gameState.canvas && wsStatus === 'open' && ( // Ensure gameState and canvas exist
+      {renderScores()}
+      {canRenderGame && (
         <>
-          {renderScores()}
-          {/* Render Bricks */}
-          {gameState.canvas.grid?.flat().map((cell) => // Use optional chaining
-            // Check cell, cell.data, type, and life
-            cell && cell.data && cell.data.type === 0 && cell.data.life > 0 ? (
-              <Brick key={`brick-${cell.x}-${cell.y}`} $cellData={cell} />
+          {canvasData!.grid.flat().map((cell: Cell | null) =>
+            cell?.data?.type === 0 && cell.data.life > 0 ? (
+              <Brick
+                key={`brick-${cell.x}-${cell.y}`}
+                $cellData={cell}
+                $cellSize={cellSize}
+              />
             ) : null
           )}
-
-          {/* Render Paddles */}
-          {gameState.paddles?.map((paddle) => // Use optional chaining
-            paddle ? <Paddle key={`paddle-${paddle.index}`} $paddleData={paddle} /> : null
+          {paddles.map((p) =>
+            p ? <Paddle key={`paddle-${p.index}`} $paddleData={p} /> : null
           )}
-
-          {/* Render Balls */}
-          {gameState.balls?.map((ball) => // Use optional chaining
-            ball ? <Ball key={`ball-${ball.id}`} $ballData={ball} /> : null
+          {balls.map((b) =>
+            b ? <Ball key={`ball-${b.id}`} $ballData={b} /> : null
           )}
         </>
       )}
