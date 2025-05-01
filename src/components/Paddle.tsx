@@ -1,33 +1,37 @@
-// File: frontend/src/components/Paddle.tsx
+// File: src/components/Paddle.tsx
 import styled from 'styled-components';
 import { Paddle as PaddleType } from '../types/game';
-// Ensure the correct utility function is imported
 import { getPaddleColorByPlayerIndex } from '../utils/colors';
+import { AppTheme } from '../styles/theme'; // Import theme type
 
 interface PaddleProps {
   $paddleData: PaddleType;
 }
 
-const StyledPaddle = styled.div<{ $bgColor: string; $width: number; $height: number; $x: number; $y: number }>`
+const StyledPaddle = styled.div<{
+  $bgColor: string;
+  $width: number;
+  $height: number;
+  $x: number;
+  $y: number;
+  theme: AppTheme; // Receive theme
+}>`
   position: absolute;
   background-color: ${(props) => props.$bgColor};
   width: ${(props) => props.$width}px;
   height: ${(props) => props.$height}px;
   left: ${(props) => props.$x}px;
   top: ${(props) => props.$y}px;
-  box-shadow: 0 0 5px ${(props) => props.$bgColor};
+  box-shadow: 0 0 5px ${(props) => props.$bgColor}; // Subtle glow effect
+  // Smooth transitions for position changes
   transition: left 0.05s linear, top 0.05s linear;
+  will-change: left, top; // Optimize rendering
+  border-radius: 2px; // Slightly rounded edges
 `;
 
 const PaddleComponent: React.FC<PaddleProps> = ({ $paddleData }) => {
-  // Log the received index (expecting 0, 1, 2, or 3 from backend now)
-  console.log(`PaddleComponent: Rendering paddle with index: ${$paddleData.index}`);
-
-  // Calculate the color using the 0-based utility
+  // Calculate the color using the utility function which maps index 0-3
   const paddleColor = getPaddleColorByPlayerIndex($paddleData.index);
-
-  // Log the calculated color
-  console.log(`PaddleComponent: Calculated color for index ${$paddleData.index}: ${paddleColor}`);
 
   return (
     <StyledPaddle

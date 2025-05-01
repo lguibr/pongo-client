@@ -14,15 +14,15 @@ export interface Cell {
   data: BrickData | null; // Can be null if cell is empty or data missing
 }
 
-export type Grid = Cell[][];
+export type Grid = (Cell | null)[][]; // Grid can contain null cells
 
 export interface Canvas {
   grid: Grid;
-  width: number;
-  height: number;
-  gridSize: number;
-  canvasSize: number;
-  cellSize: number;
+  width: number; // Logical width (usually same as canvasSize)
+  height: number; // Logical height (usually same as canvasSize)
+  gridSize: number; // Number of cells per side (e.g., 20 for a 20x20 grid)
+  canvasSize: number; // Logical dimension of the square canvas (e.g., 1000)
+  cellSize: number; // Calculated size of each grid cell (canvasSize / gridSize)
 }
 
 // Simplified Player info sent in GameState
@@ -39,10 +39,12 @@ export interface Paddle {
   width: number;
   height: number;
   index: number; // Player index (0-3, corresponds to array index)
-  direction: string; // Internal backend state ("left", "right", "")
+  direction: string; // Internal backend state ("left", "right", "") - may not be needed by frontend display
   vx: number; // Current horizontal velocity
-  vy: number; // Current vertical velocity
+  vy: number; // Current vertical velocity (usually 0 for horizontal paddles)
+  isMoving: boolean; // Reflects paddle movement state
 }
+
 
 export interface Ball {
   x: number; // Center X coordinate
@@ -51,7 +53,7 @@ export interface Ball {
   vy: number; // Velocity Y
   radius: number;
   id: number; // Unique ID
-  ownerIndex: number; // Owning player index (0-3) or potentially another value (e.g., -1) if unowned.
+  ownerIndex: number; // Owning player index (0-3) or another value (e.g., -1) if unowned.
   phasing: boolean; // If true, ignores brick collisions temporarily
   mass: number;
   isPermanent: boolean;
@@ -60,15 +62,17 @@ export interface Ball {
 // Represents the overall state received from the backend WebSocket
 export interface GameState {
   canvas: Canvas | null;
-  // Note: Frontend assumes 0-based indexing for players/paddles (0=Blue, 1=Green, etc.)
-  // The backend might use 1-based indexing in its arrays (index 0 null).
-  // Frontend components rely on the 'index' field within Player/Paddle objects.
-  players: (Player | null)[];
-  paddles: (Paddle | null)[];
-  balls: (Ball | null)[];
+  players: (Player | null)[]; // Array might contain null if a player slot is empty
+  paddles: (Paddle | null)[]; // Array might contain null
+  balls: (Ball | null)[];     // Array might contain null
 }
 
 // Message sent from frontend to backend for paddle movement
 export interface DirectionMessage {
   direction: "ArrowLeft" | "ArrowRight" | "Stop";
+}
+
+// Message received from backend upon connection, indicating the client's player index
+export interface PlayerAssignmentMessage {
+  playerIndex: number; // The index assigned to this specific client (0-3)
 }
