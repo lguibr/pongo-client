@@ -1,6 +1,6 @@
 // File: src/components/Ball.tsx
 import { useState, useEffect, useRef } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes, css } from 'styled-components';
 import { Ball as BallType } from '../types/game';
 import { getColorByOwnerIndex } from '../utils/colors';
 import { AppTheme } from '../styles/theme'; // Import theme type
@@ -16,6 +16,13 @@ interface Position {
   x: number;
   y: number;
 }
+
+// Keyframes for phasing effect
+const phasingAnimation = keyframes`
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+`;
 
 // Base style using theme potentially for fallback or shared properties
 const BaseBallStyle = styled.div<{
@@ -33,12 +40,25 @@ const BaseBallStyle = styled.div<{
   left: ${(props) => props.$x - props.$radius}px;
   top: ${(props) => props.$y - props.$radius}px;
   border-radius: 50%;
-  will-change: left, top, opacity; // Optimize rendering
+  will-change: left, top, opacity, border; // Optimize rendering
 `;
 
-const BallPrimitive = styled(BaseBallStyle)`
+const BallPrimitive = styled(BaseBallStyle) <{
+  $isPhasing: boolean;
+  $isPermanent: boolean;
+}>`
   box-shadow: 0 0 8px ${(props) => props.$color}; // Glow effect
-  transition: left 0.016s linear, top 0.016s linear; // Smooth movement (adjust timing as needed)
+  transition: left 0.016s linear, top 0.016s linear; // Smooth movement
+  border: ${(props) =>
+    props.$isPermanent
+      ? `2px solid ${props.theme.colors.unownedBall}` // White border if permanent
+      : 'none'};
+
+  ${(props) =>
+    props.$isPhasing &&
+    css`
+      animation: ${phasingAnimation} 0.3s infinite ease-in-out;
+    `}
 `;
 
 const TrailSegment = styled(BaseBallStyle) <{ $opacity: number }>`
@@ -100,12 +120,11 @@ const BallComponent: React.FC<BallProps> = ({ $ballData }) => {
         $radius={$ballData.radius}
         $x={$ballData.x}
         $y={$ballData.y}
+        $isPhasing={$ballData.phasing}
+        $isPermanent={$ballData.isPermanent}
       />
     </>
   );
 };
 
-// Memoize the component if performance becomes an issue,
-// especially if GameState updates very frequently.
-// export default React.memo(BallComponent);
 export default BallComponent;

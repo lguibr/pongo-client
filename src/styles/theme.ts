@@ -34,6 +34,8 @@ const theme = {
     // UI Elements
     scoreboardBackground: 'rgba(0, 0, 0, 0.6)',
     statusMessageBackground: 'rgba(0, 0, 0, 0.7)',
+    // Particle color could be defined here if needed, e.g.:
+    // particleColor: '#FFFFFF',
   },
   fonts: {
     primary:
