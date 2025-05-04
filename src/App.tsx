@@ -1,15 +1,25 @@
 // File: src/App.tsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
-// Joystick import removed
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 
 import GameCanvas from './components/GameCanvas';
 import { WEBSOCKET_URL } from './utils/constants';
 import {
   DirectionMessage,
-  GameState,
+  GameStateUpdateMessage,
   PlayerAssignmentMessage,
+  InitialGridStateMessage,
+  GameOverMessage,
+  IncomingMessage, // Union type
+  isPlayerAssignment, // Type guards
+  isInitialGridState,
+  isGameStateUpdate,
+  isGameOver,
+  Player,
+  Paddle,
+  Ball,
+  Grid,
 } from './types/game';
 import { useWindowSize } from './hooks/useWindowSize';
 import { usePlayerRotation } from './hooks/usePlayerRotation';
@@ -46,10 +56,9 @@ const Title = styled.h1<{ theme: AppTheme }>`
 `;
 
 const CanvasArea = styled.div`
-  position: relative; // Needed for absolute positioning of ScoreBoard
+  position: relative; // Needed for absolute positioning of ScoreBoard/GameOver
   flex: 1;
   display: flex;
-  // Removed flex-direction: column
   justify-content: center; // Center canvas horizontally
   align-items: center; // Center canvas vertically
   touch-action: none; // Prevent default touch actions like scrolling/zooming
@@ -67,51 +76,78 @@ const ScoreBoard = styled.div<{ theme: AppTheme }>`
   color: ${({ theme }) => theme.colors.text}; // Use primary text color
 `;
 
-const CanvasWrapper = styled.div<{ $size: number; $rotate: number; theme: AppTheme }>`
+const CanvasWrapper = styled.div<{
+  $size: number;
+  $rotate: number;
+  theme: AppTheme;
+}>`
   width: ${(p) => p.$size}px;
   height: ${(p) => p.$size}px;
   background: ${({ theme }) => theme.colors.background}; // Use theme background
   box-shadow: ${({ theme }) => theme.shadows.canvas};
   transform: rotate(${(p) => p.$rotate}deg);
   transform-origin: center center;
-  // Removed margin-bottom
 `;
 
-// JoystickWrapper removed
+const GameOverOverlay = styled.div<{ theme: AppTheme }>`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: ${({ theme }) => theme.colors.text};
+  z-index: 50;
+  text-align: center;
 
-// --- Helper Functions ---
+  h2 {
+    font-size: 2.5em;
+    margin-bottom: 20px;
+    color: ${({ theme }) => theme.colors.accent};
+  }
 
-// Use unknown instead of any for type guards
-function isPlayerAssignment(data: unknown): data is PlayerAssignmentMessage {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'playerIndex' in data && // Check for property existence
-    typeof (data as PlayerAssignmentMessage).playerIndex === 'number'
-  );
-}
+  p {
+    font-size: 1.2em;
+    margin-bottom: 15px;
+  }
 
-function isGameState(data: unknown): data is GameState {
-  // Add more robust checks if necessary
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'canvas' in data && // Check for property existence
-    'players' in data &&
-    'paddles' in data &&
-    'balls' in data &&
-    (data as GameState).canvas !== undefined && // Check if not undefined (null is allowed by type)
-    Array.isArray((data as GameState).players) &&
-    Array.isArray((data as GameState).paddles) &&
-    Array.isArray((data as GameState).balls)
-  );
-}
+  ul {
+    list-style: none;
+    padding: 0;
+    margin-top: 10px;
+  }
+
+  li {
+    margin-bottom: 5px;
+  }
+`;
 
 // --- App Component ---
 
 export default function App() {
-  const [gameState, setGameState] = useState<GameState | null>(null);
+  // State for dynamic game elements
+  const [players, setPlayers] = useState<(Player | null)[]>([]);
+  const [paddles, setPaddles] = useState<(Paddle | null)[]>([]);
+  const [balls, setBalls] = useState<(Ball | null)[]>([]);
+
+  // State for static grid/canvas info (received once)
+  const [grid, setGrid] = useState<Grid | null>(null);
+  const [canvasSize, setCanvasSize] = useState<number>(0);
+  const [gridSize, setGridSize] = useState<number>(0);
+  const [cellSize, setCellSize] = useState<number>(0);
+
+  // State for client-specific info
   const [myPlayerIndex, setMyPlayerIndex] = useState<number | null>(null);
+
+  // State for game over
+  const [gameOverInfo, setGameOverInfo] = useState<GameOverMessage | null>(
+    null
+  );
+
   const { width: windowWidth, height: windowHeight } = useWindowSize();
   const rotationDegrees = usePlayerRotation(myPlayerIndex);
 
@@ -136,59 +172,96 @@ export default function App() {
   useEffect(() => {
     if (!lastMessage?.data) return;
     try {
-      const data: unknown = JSON.parse(lastMessage.data); // Parse into unknown first
+      const data: IncomingMessage = JSON.parse(lastMessage.data); // Parse into union type
 
+      // Use type guards to handle different messages
       if (isPlayerAssignment(data)) {
         console.log(`Assigning Player Index: ${data.playerIndex}`);
         setMyPlayerIndex(data.playerIndex);
-      } else if (isGameState(data)) {
-        // Add validation if needed
-        setGameState(data);
+        setGameOverInfo(null); // Reset game over state on new assignment
+      } else if (isInitialGridState(data)) {
+        console.log('Received Initial Grid State');
+        setCanvasSize(data.canvasWidth); // Assuming width=height=canvasSize
+        setGridSize(data.gridSize);
+        setCellSize(data.cellSize);
+        setGrid(data.grid);
+      } else if (isGameStateUpdate(data)) {
+        // Update dynamic state only if game is not over
+        if (!gameOverInfo) {
+          setPlayers(data.players);
+          setPaddles(data.paddles);
+          setBalls(data.balls);
+        }
+      } else if (isGameOver(data)) {
+        console.log('Received Game Over message:', data);
+        setGameOverInfo(data);
       } else {
         console.warn('Received unknown message structure:', data);
       }
     } catch (e) {
       console.error('Failed to parse WebSocket message:', e);
     }
-  }, [lastMessage]);
+  }, [lastMessage, gameOverInfo]); // Add gameOverInfo dependency
 
   // Callback to send direction messages
   const sendDirectionMessage = useCallback(
     (direction: DirectionMessage['direction']) => {
-      if (connectionStatus === 'open') {
+      if (connectionStatus === 'open' && !gameOverInfo) { // Don't send input if game over
         sendMessage(JSON.stringify({ direction }));
       }
     },
-    [connectionStatus, sendMessage]
+    [connectionStatus, sendMessage, gameOverInfo] // Add gameOverInfo dependency
   );
 
   // Setup input handling using the custom hook
-  // No longer need to destructure joystick handlers
   useInputHandler({
-    isEnabled: connectionStatus === 'open',
+    isEnabled: connectionStatus === 'open' && !gameOverInfo, // Disable input if game over
     rotationDegrees,
     sendDirection: sendDirectionMessage,
   });
 
-  // Calculate canvas size based on window dimensions
+  // Calculate canvas display size based on window dimensions
   const canvasDisplaySize = useMemo(() => {
     const headerHeight = parseInt(theme.sizes.headerHeight, 10) || 50;
-    // Removed joystickAreaHeight
     const gap = parseInt(theme.sizes.canvasGap, 10) || 20;
     const availableWidth = windowWidth - gap;
-    // Use full available height minus header
     const availableHeight = windowHeight - headerHeight - gap;
     return Math.max(100, Math.min(availableWidth, availableHeight)); // Ensure a minimum size
   }, [windowWidth, windowHeight]);
 
   // Calculate scale factor for rendering game elements
   const scaleFactor = useMemo(() => {
-    const logicalSize = gameState?.canvas?.canvasSize ?? 0;
-    return logicalSize > 0 ? canvasDisplaySize / logicalSize : 1;
-  }, [gameState, canvasDisplaySize]);
+    // Use the canvasSize state variable
+    return canvasSize > 0 ? canvasDisplaySize / canvasSize : 1;
+  }, [canvasSize, canvasDisplaySize]);
+
+  const renderGameOver = () => {
+    if (!gameOverInfo) return null;
+
+    const winnerText =
+      gameOverInfo.winnerIndex === -1
+        ? 'It\'s a Tie!'
+        : `Player ${gameOverInfo.winnerIndex} Wins!`;
+
+    return (
+      <GameOverOverlay>
+        <h2>Game Over!</h2>
+        <p>{winnerText}</p>
+        <p>Reason: {gameOverInfo.reason}</p>
+        <p>Final Scores:</p>
+        <ul>
+          {gameOverInfo.finalScores.map((score, index) => (
+            <li key={index}>
+              Player {index}: {score}
+            </li>
+          ))}
+        </ul>
+        {/* Add a button to reconnect/start new game? */}
+      </GameOverOverlay>
+    );
+  };
 
   return (
-    // ThemeProvider is now in main.tsx
     <AppContainer>
       <Header>
         <Logo src="/bitmap.png" alt="PonGo Logo" />
@@ -198,8 +271,8 @@ export default function App() {
         {/* Scoreboard outside the rotated wrapper */}
         <ScoreBoard>
           {myPlayerIndex !== null && <div>Player: {myPlayerIndex}</div>}
-          {gameState?.players
-            .filter((p): p is Exclude<typeof p, null> => p !== null)
+          {players
+            .filter((p): p is Player => p !== null) // Type assertion
             .map((p) => (
               <div key={p.index}>
                 P{p.index}: {p.score}
@@ -209,18 +282,20 @@ export default function App() {
 
         <CanvasWrapper $size={canvasDisplaySize} $rotate={rotationDegrees}>
           <GameCanvas
-            canvasData={gameState?.canvas ?? null}
-            // players prop removed
-            paddles={gameState?.paddles ?? []}
-            balls={gameState?.balls ?? []}
+            // Pass static info
+            logicalWidth={canvasSize}
+            logicalHeight={canvasSize} // Assuming square
+            grid={grid}
+            cellSize={cellSize}
+            // Pass dynamic info
+            paddles={paddles}
+            balls={balls}
+            // Pass status and scale
             wsStatus={connectionStatus}
             scaleFactor={scaleFactor}
-          // hideScore prop removed
           />
         </CanvasWrapper>
-
-        {/* Joystick component removed */}
-
+        {renderGameOver()}
       </CanvasArea>
     </AppContainer>
   );

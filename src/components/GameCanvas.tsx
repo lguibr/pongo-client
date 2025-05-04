@@ -2,11 +2,11 @@
 import React from 'react';
 import styled from 'styled-components';
 import {
-  // Player type removed as prop is removed
   Paddle as PaddleType,
   Ball as BallType,
-  Canvas as CanvasData,
+  Grid, // Use Grid type
   Cell,
+  Player, // Import Player type if needed for score display (though score is now outside)
 } from '../types/game';
 import Paddle from './Paddle';
 import Ball from './Ball';
@@ -14,13 +14,17 @@ import Brick from './Brick';
 import { AppTheme } from '../styles/theme';
 
 interface GameCanvasProps {
-  canvasData: CanvasData | null;
-  // players prop removed
+  // Static Info
+  logicalWidth: number;
+  logicalHeight: number;
+  grid: Grid | null;
+  cellSize: number;
+  // Dynamic Info
   paddles: (PaddleType | null)[];
   balls: (BallType | null)[];
+  // Status & Scale
   wsStatus: 'connecting' | 'open' | 'closing' | 'closed' | 'error';
   scaleFactor: number;
-  // hideScore prop removed
 }
 
 // --- Styled Components ---
@@ -60,22 +64,15 @@ const StatusMessage = styled.div<{ theme: AppTheme }>`
 // --- GameCanvas Component ---
 
 const GameCanvas: React.FC<GameCanvasProps> = ({
-  canvasData,
-  // players prop removed from destructuring
+  logicalWidth,
+  logicalHeight,
+  grid,
+  cellSize,
   paddles,
   balls,
   wsStatus,
   scaleFactor,
-  // hideScore prop removed from destructuring
 }) => {
-  const logicalWidth = canvasData?.canvasSize ?? 0;
-  const logicalHeight = canvasData?.canvasSize ?? 0;
-
-  const cellSize =
-    canvasData && canvasData.canvasSize > 0 && canvasData.gridSize > 0
-      ? canvasData.canvasSize / canvasData.gridSize
-      : 0;
-
   const renderStatus = () => {
     switch (wsStatus) {
       case 'connecting':
@@ -87,7 +84,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       case 'closing':
         return <StatusMessage>Closing...</StatusMessage>;
       case 'open':
-        if (!canvasData) {
+        // Check if grid is received, not just canvasData
+        if (!grid) {
           return <StatusMessage>Waiting for game state...</StatusMessage>;
         }
         return null;
@@ -96,11 +94,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   };
 
-  const canRenderGame =
-    wsStatus === 'open' &&
-    canvasData &&
-    Array.isArray(canvasData.grid) &&
-    cellSize > 0;
+  // Render game only if connected and grid is available
+  const canRenderGame = wsStatus === 'open' && grid && cellSize > 0;
 
   return (
     <CanvasContainer
@@ -112,18 +107,22 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
       {canRenderGame && (
         <>
-          {canvasData.grid
-            .flat()
-            .map((cell: Cell | null) =>
+          {/* Render grid based on the grid prop */}
+          {grid
+            .flat() // Flatten the 2D array
+            .map((cell: Cell | null, index: number) =>
+              // Check if cell and its data exist and it's a brick with life
               cell?.data?.type === 0 && cell.data.life > 0 ? (
                 <Brick
-                  key={`brick-${cell.x}-${cell.y}`}
+                  // Use a more stable key if possible, index might change if grid structure changes
+                  key={`brick-${cell.x}-${cell.y}-${index}`}
                   $cellData={cell}
                   $cellSize={cellSize}
                 />
               ) : null
             )}
 
+          {/* Render dynamic elements */}
           {paddles.map((paddle) =>
             paddle ? (
               <Paddle key={`paddle-${paddle.index}`} $paddleData={paddle} />

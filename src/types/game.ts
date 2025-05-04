@@ -1,7 +1,8 @@
-// File: frontend/src/types/game.ts
+// File: src/types/game.ts
 
-// These interfaces should mirror the JSON structure sent by the Go backend's GameState
+// These interfaces should mirror the JSON structure sent by the Go backend
 
+// --- Static Grid/Canvas Info ---
 export interface BrickData {
   type: number; // Corresponds to utils.CellType (0: brick, 1: block, 2: empty)
   life: number;
@@ -16,16 +17,7 @@ export interface Cell {
 
 export type Grid = (Cell | null)[][]; // Grid can contain null cells
 
-export interface Canvas {
-  grid: Grid;
-  width: number; // Logical width (usually same as canvasSize)
-  height: number; // Logical height (usually same as canvasSize)
-  gridSize: number; // Number of cells per side (e.g., 20 for a 20x20 grid)
-  canvasSize: number; // Logical dimension of the square canvas (e.g., 1000)
-  cellSize: number; // Calculated size of each grid cell (canvasSize / gridSize)
-}
-
-// Simplified Player info sent in GameState
+// --- Dynamic State Elements ---
 export interface Player {
   index: number; // Player index (0-3, corresponds to array index)
   id: string;
@@ -39,12 +31,12 @@ export interface Paddle {
   width: number;
   height: number;
   index: number; // Player index (0-3, corresponds to array index)
-  direction: string; // Internal backend state ("left", "right", "") - may not be needed by frontend display
+  // direction: string; // Internal backend state - removed from frontend type
   vx: number; // Current horizontal velocity
-  vy: number; // Current vertical velocity (usually 0 for horizontal paddles)
+  vy: number; // Current vertical velocity
   isMoving: boolean; // Reflects paddle movement state
+  collided: boolean; // Indicates if the paddle has collided with a ball
 }
-
 
 export interface Ball {
   x: number; // Center X coordinate
@@ -57,22 +49,103 @@ export interface Ball {
   phasing: boolean; // If true, ignores brick collisions temporarily
   mass: number;
   isPermanent: boolean;
+  collided: boolean; // Indicates if the ball has collided with something
 }
 
-// Represents the overall state received from the backend WebSocket
-export interface GameState {
-  canvas: Canvas | null;
-  players: (Player | null)[]; // Array might contain null if a player slot is empty
-  paddles: (Paddle | null)[]; // Array might contain null
-  balls: (Ball | null)[];     // Array might contain null
-}
+// --- WebSocket Message Types ---
 
 // Message sent from frontend to backend for paddle movement
 export interface DirectionMessage {
-  direction: "ArrowLeft" | "ArrowRight" | "Stop";
+  direction: 'ArrowLeft' | 'ArrowRight' | 'Stop';
 }
 
 // Message received from backend upon connection, indicating the client's player index
 export interface PlayerAssignmentMessage {
+  messageType: 'playerAssignment'; // Type identifier
   playerIndex: number; // The index assigned to this specific client (0-3)
 }
+
+// Message received from backend upon connection, providing static layout
+export interface InitialGridStateMessage {
+  messageType: 'initialGridState'; // Type identifier
+  canvasWidth: number;
+  canvasHeight: number;
+  gridSize: number;
+  cellSize: number;
+  grid: Grid; // The initial static grid layout
+}
+
+// Represents the dynamic game state update received from the backend WebSocket
+export interface GameStateUpdateMessage {
+  messageType: 'gameStateUpdate'; // Type identifier
+  players: (Player | null)[]; // Array might contain null if a player slot is empty
+  paddles: (Paddle | null)[]; // Array might contain null
+  balls: (Ball | null)[]; // Array might contain null
+}
+
+// Message received when the game ends
+export interface GameOverMessage {
+  messageType: 'gameOver'; // Type identifier
+  winnerIndex: number; // Index of the winning player (-1 if draw/no winner)
+  finalScores: number[]; // Final scores of all players (adjust if backend sends [4]int32)
+  reason: string; // e.g., "All bricks destroyed"
+  roomPid: string; // PID of the game room that ended
+}
+
+// Type guard for PlayerAssignmentMessage
+export function isPlayerAssignment(
+  data: unknown
+): data is PlayerAssignmentMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as PlayerAssignmentMessage).messageType === 'playerAssignment' &&
+    typeof (data as PlayerAssignmentMessage).playerIndex === 'number'
+  );
+}
+
+// Type guard for InitialGridStateMessage
+export function isInitialGridState(
+  data: unknown
+): data is InitialGridStateMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as InitialGridStateMessage).messageType === 'initialGridState' &&
+    typeof (data as InitialGridStateMessage).canvasWidth === 'number' &&
+    typeof (data as InitialGridStateMessage).gridSize === 'number' &&
+    Array.isArray((data as InitialGridStateMessage).grid)
+  );
+}
+
+// Type guard for GameStateUpdateMessage
+export function isGameStateUpdate(
+  data: unknown
+): data is GameStateUpdateMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as GameStateUpdateMessage).messageType === 'gameStateUpdate' &&
+    Array.isArray((data as GameStateUpdateMessage).players) &&
+    Array.isArray((data as GameStateUpdateMessage).paddles) &&
+    Array.isArray((data as GameStateUpdateMessage).balls)
+  );
+}
+
+// Type guard for GameOverMessage
+export function isGameOver(data: unknown): data is GameOverMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as GameOverMessage).messageType === 'gameOver' &&
+    typeof (data as GameOverMessage).winnerIndex === 'number' &&
+    Array.isArray((data as GameOverMessage).finalScores)
+  );
+}
+
+// Union type for all possible incoming messages
+export type IncomingMessage =
+  | PlayerAssignmentMessage
+  | InitialGridStateMessage
+  | GameStateUpdateMessage
+  | GameOverMessage;
