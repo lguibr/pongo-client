@@ -10,6 +10,7 @@ import { WEBSOCKET_URL } from './utils/constants';
 import { DirectionMessage, Player, VisualDirection } from './types/game';
 import { useInputHandler } from './hooks/useInputHandler';
 import { useGameState } from './hooks/useGameState';
+// Corrected import path if usePlayerRotation is in utils/rotation.ts
 import { usePlayerRotation } from './utils/rotation';
 import { useWindowSize } from './hooks/useWindowSize';
 import GlobalStyle from './styles/GlobalStyle';
@@ -204,34 +205,31 @@ function AppContent() {
         lastSentMobileLogicalDir.current = logicalDir;
       }
 
-      console.log(`[Input App] Sending Logical: ${logicalDir} from ${source} (Player: ${myPlayerIndex})`);
+      // console.log(`[Input App] Sending Logical: ${logicalDir} from ${source} (Player: ${myPlayerIndex})`); // Removed log
       sendMessage(JSON.stringify({ direction: logicalDir }));
     },
     [isGameActive, sendMessage, myPlayerIndex] // Use isGameActive
   );
 
   // Mapping function
-   
   const mapDirection = useCallback((visualDir: VisualDirection): DirectionMessage['direction'] => {
     if (visualDir === 'Stop') return 'Stop';
 
-    // Player indices 0 and 2 have paddles oriented vertically on the backend
-    // Player indices 1 and 3 have paddles oriented horizontally on the backend
+    // Determine if the direction needs to be swapped based on the player index.
+    // Players 0 (Right side, rotated 270deg) and 1 (Top side, rotated 180deg)
+    // need their visual left/right controls swapped to match the backend's expectation.
+    const needsSwap = myPlayerIndex === 0 || myPlayerIndex === 1;
 
-    // Determine the effective rotation based on player index
-    const rotation = rotationDegrees; // 0, 90, 180, 270
-
-    // Map visual direction (left/right on screen) to logical direction (backend movement)
-    if (rotation === 0) { // Player 3 (Bottom)
-      return visualDir; // Left is Left, Right is Right
-    } else if (rotation === 90) { // Player 2 (Left)
-      return visualDir === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft'; // Visual Left is Logical Right, Visual Right is Logical Left
-    } else if (rotation === 180) { // Player 1 (Top)
-      return visualDir === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft'; // Visual Left is Logical Right, Visual Right is Logical Left
-    } else { // rotation === 270, Player 0 (Right)
-      return visualDir; // Left is Left, Right is Right
+    if (needsSwap) {
+      // Swap: Visual Left becomes Logical Right, Visual Right becomes Logical Left
+      return visualDir === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft';
+    } else {
+      // No Swap: Players 2 (Left side, rotated 90deg) and 3 (Bottom side, rotated 0deg)
+      // Visual Left is Logical Left, Visual Right is Logical Right
+      return visualDir;
     }
-  }, [myPlayerIndex, rotationDegrees]); // myPlayerIndex is needed because rotationDegrees depends on it
+    // Add myPlayerIndex back as a dependency
+  }, [myPlayerIndex]);
 
 
   // Handler for visual direction changes from the keyboard hook

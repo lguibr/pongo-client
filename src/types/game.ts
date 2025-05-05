@@ -136,6 +136,7 @@ export interface BallPositionUpdate {
   vx: number;
   vy: number;
   collided: boolean;
+  phasing: boolean; // Added phasing status
 }
 
 export interface PaddlePositionUpdate {

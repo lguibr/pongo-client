@@ -27,6 +27,16 @@ const TEMPORARY_BALL_ROUGHNESS = 1; // High for matte look
 const TEMPORARY_BALL_METALNESS = 0.0; // No metalness/reflections
 const TEMPORARY_BALL_BASE_EMISSIVE = 0.0; // No base glow
 
+// Phasing Effect Constants
+const PHASING_ALPHA_FREQUENCY = 3.0; // Faster pulse
+const PHASING_ALPHA_MIN = 0.4;
+const PHASING_ALPHA_MAX = 0.9;
+const PHASING_EMISSIVE_FREQUENCY = 2.5; // Slightly different frequency
+const PHASING_EMISSIVE_PULSE_AMOUNT = 0.15; // How much emissive pulses
+
+// Render Order
+const BALL_RENDER_ORDER = 1; // Render balls after default objects (bricks)
+
 const Ball3D: React.FC<Ball3DProps> = ({ data, position }) => {
   const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null!);
@@ -35,6 +45,8 @@ const Ball3D: React.FC<Ball3DProps> = ({ data, position }) => {
   const [materialEmissiveIntensity, setMaterialEmissiveIntensity] = useState(0);
   const color = getColorByOwnerIndex(data.ownerIndex);
   const lightColor = useMemo(() => new THREE.Color(color), [color]);
+  // const lastPhasingLogTime = useRef(0); // Removed log tracking
+  // const loggedPhasingTrueThisFrame = useRef(false); // Removed log tracking
 
   const renderRadius = useMemo(() => Math.max(data.radius, data.mass), [data.radius, data.mass]);
 
@@ -74,16 +86,35 @@ const Ball3D: React.FC<Ball3DProps> = ({ data, position }) => {
   }, [color, lightColor, baseMaterialProps]); // Depend on baseMaterialProps
 
   // Phasing and Opacity/Transparency Management
-  useFrame(() => {
+  useFrame((state) => {
+    // loggedPhasingTrueThisFrame.current = false; // Removed log tracking
     if (materialRef.current) {
-      const time = Date.now() * 0.005;
+      const time = state.clock.getElapsedTime(); // Use R3F clock for smoother animation
       let targetOpacity = baseMaterialProps.opacity; // Start with base opacity
       let currentEmissive = baseMaterialProps.baseEmissive; // Start with base emissive
 
       if (data.phasing) {
-        targetOpacity = 0.5 + Math.sin(time) * 0.4; // Phasing overrides opacity
-        currentEmissive = baseMaterialProps.baseEmissive + Math.sin(time * 0.8) * 0.1; // Add phasing pulse to base
+        // loggedPhasingTrueThisFrame.current = true; // Removed log tracking
+
+        // Calculate pulsing alpha
+        const alphaRange = PHASING_ALPHA_MAX - PHASING_ALPHA_MIN;
+        targetOpacity = PHASING_ALPHA_MIN + (Math.sin(time * PHASING_ALPHA_FREQUENCY) + 1) / 2 * alphaRange;
+
+        // Calculate pulsing emissive, only add if not currently in collision flash
+        if (materialEmissiveIntensity <= baseMaterialProps.baseEmissive) {
+          currentEmissive = baseMaterialProps.baseEmissive +
+            (Math.sin(time * PHASING_EMISSIVE_FREQUENCY) + 1) / 2 * PHASING_EMISSIVE_PULSE_AMOUNT;
+        }
+
+        // Removed periodic log
+        // const now = Date.now();
+        // if (now - lastPhasingLogTime.current > 1000) {
+        //   lastPhasingLogTime.current = now;
+        // }
       }
+      // else {
+      //   lastPhasingLogTime.current = 0; // Removed log tracking
+      // }
 
       // Apply collision glow if active (overrides phasing emissive)
       if (materialEmissiveIntensity > baseMaterialProps.baseEmissive) {
@@ -94,7 +125,9 @@ const Ball3D: React.FC<Ball3DProps> = ({ data, position }) => {
       const isTransparent = targetOpacity < 1.0;
       materialRef.current.opacity = targetOpacity;
       materialRef.current.transparent = isTransparent;
-      materialRef.current.depthWrite = !isTransparent; // Only write depth if fully opaque
+      // Depth write should generally be true unless fully transparent or specifically needed otherwise
+      // For phasing, we want it to interact normally with depth *except* for render order override.
+      materialRef.current.depthWrite = !isTransparent;
       materialRef.current.emissiveIntensity = currentEmissive;
     }
   });
@@ -133,7 +166,8 @@ const Ball3D: React.FC<Ball3DProps> = ({ data, position }) => {
 
 
   return (
-    <mesh ref={meshRef} castShadow receiveShadow>
+    // Add renderOrder prop here
+    <mesh ref={meshRef} castShadow receiveShadow renderOrder={BALL_RENDER_ORDER}>
       <sphereGeometry args={[renderRadius, 16, 16]} />
       <meshStandardMaterial
         ref={materialRef}

@@ -18,6 +18,20 @@ interface GameState {
   gameOverInfo: GameOverMessage | null;
 }
 
+// Helper to format timestamp with milliseconds
+const getTimestamp = (): string => {
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const ms = String(now.getMilliseconds()).padStart(3, '0');
+  return `${time}.${ms}`;
+};
+
+
 // --- Specific Update Processors (Internal Helpers - Modified for R3F Coords) ---
 const processPlayerUpdate = (currentPlayers: (Player | null)[], update: AtomicUpdate): (Player | null)[] | null => {
   let newPlayers = currentPlayers;
@@ -91,8 +105,11 @@ const processPaddleUpdate = (currentPaddles: (Paddle | null)[], update: AtomicUp
 const processBallUpdate = (currentBalls: Ball[], update: AtomicUpdate): Ball[] | null => {
   let newBalls = currentBalls;
   let changed = false;
+  const timestamp = getTimestamp(); // Use helper function
+
   if (isBallSpawned(update)) {
     if (newBalls.findIndex(b => b.id === update.ball.id) === -1) {
+      // console.log(`[${timestamp}][GameState] Spawning Ball ${update.ball.id} with phasing: ${update.ball.phasing}`); // Removed log
       // BallSpawned now includes R3F coords
       newBalls = [...currentBalls, { ...update.ball, r3fX: update.r3fX, r3fY: update.r3fY }];
       changed = true;
@@ -101,6 +118,7 @@ const processBallUpdate = (currentBalls: Ball[], update: AtomicUpdate): Ball[] |
     const initialLength = newBalls.length;
     const filteredBalls = newBalls.filter(b => b.id !== update.id);
     if (filteredBalls.length !== initialLength) {
+      // console.log(`[${timestamp}][GameState] Removing Ball ${update.id}`); // Removed log
       newBalls = filteredBalls;
       changed = true;
     }
@@ -108,26 +126,41 @@ const processBallUpdate = (currentBalls: Ball[], update: AtomicUpdate): Ball[] |
     const index = newBalls.findIndex(b => b.id === update.id);
     if (index !== -1) {
       const currentBall = newBalls[index];
+
       // Check if any relevant property changed
-      if (currentBall.x !== update.x || currentBall.y !== update.y ||
-        currentBall.r3fX !== update.r3fX || currentBall.r3fY !== update.r3fY || // Check R3F coords too
-        currentBall.vx !== update.vx || currentBall.vy !== update.vy ||
-        currentBall.collided !== update.collided) {
-        if (!changed) { newBalls = [...currentBalls]; changed = true; }
+      const positionChanged = currentBall.x !== update.x || currentBall.y !== update.y ||
+        currentBall.r3fX !== update.r3fX || currentBall.r3fY !== update.r3fY;
+      const velocityChanged = currentBall.vx !== update.vx || currentBall.vy !== update.vy;
+      const collisionChanged = currentBall.collided !== update.collided;
+      const phasingChanged = currentBall.phasing !== update.phasing;
+
+      if (positionChanged || velocityChanged || collisionChanged || phasingChanged) {
+        // console.log(`[${timestamp}][GameState] Updating Ball ${update.id}: Pos=${positionChanged}, Vel=${velocityChanged}, Coll=${collisionChanged}, Phase=${phasingChanged} (Incoming: ${update.phasing})`); // Removed log
+
+        if (!changed) {
+          newBalls = [...currentBalls]; // Create a new array only if we haven't already in this batch for balls
+          changed = true;
+        }
+        // Create a new ball object for the update
         newBalls[index] = {
-          ...currentBall, // Spread existing ball data
+          ...currentBall, // Spread existing ball data first
           x: update.x, y: update.y, // Update original coords
           r3fX: update.r3fX, r3fY: update.r3fY, // Update R3F coords
           vx: update.vx, vy: update.vy,
           collided: update.collided,
+          phasing: update.phasing, // Update phasing status
         };
+        // console.log(`[${timestamp}][GameState] Ball ${update.id} state AFTER update: phasing=${newBalls[index].phasing}`); // Removed log
       }
+    } else {
+      console.warn(`[${timestamp}][GameState] Received BallPositionUpdate for unknown Ball ID: ${update.id}`); // Keep this warning
     }
   } else if (isBallOwnershipChange(update)) {
     const index = newBalls.findIndex(b => b.id === update.id);
     if (index !== -1) {
       const currentBall = newBalls[index];
       if (currentBall.ownerIndex !== update.newOwnerIndex) {
+        // console.log(`[${timestamp}][GameState] Updating Ball ${update.id} owner to ${update.newOwnerIndex}`); // Removed log
         if (!changed) { newBalls = [...currentBalls]; changed = true; }
         newBalls[index] = { ...currentBall, ownerIndex: update.newOwnerIndex };
       }
@@ -143,16 +176,14 @@ function applyUpdates<T>(
   processor: (state: T, update: AtomicUpdate) => T | null
 ): T {
   let newState = currentState;
-  let stateChangedInBatch = false;
   updates.forEach(update => {
     if (isFullGridUpdate(update)) return; // Skip grid updates here
     const processedState = processor(newState, update);
     if (processedState !== null) {
       newState = processedState;
-      stateChangedInBatch = true;
     }
   });
-  return stateChangedInBatch ? newState : currentState;
+  return newState;
 }
 
 export function useGameState(lastMessage: MessageEvent<string> | null): GameState {
@@ -169,12 +200,10 @@ export function useGameState(lastMessage: MessageEvent<string> | null): GameStat
     if (!lastMessage?.data) return;
     try {
       const data: IncomingMessage = JSON.parse(lastMessage.data);
-      const timestamp = new Date().toLocaleTimeString('en-US', {
-        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
-      });
+      const timestamp = getTimestamp(); // Use helper function
 
       if (isPlayerAssignment(data)) {
-        console.log(`[${timestamp}] Assigning Player Index: ${data.playerIndex}`);
+        console.log(`[${timestamp}][GameState] Assigning Player Index: ${data.playerIndex}`); // Keep
         setMyPlayerIndex(data.playerIndex);
         // Reset all game state on new assignment
         setGameOverInfo(null);
@@ -185,7 +214,7 @@ export function useGameState(lastMessage: MessageEvent<string> | null): GameStat
         setOriginalBalls([]);
         setCellSize(0);
       } else if (isInitialPlayersAndBallsState(data)) {
-        console.log(`[${timestamp}] Received Initial Players/Paddles/Balls State`);
+        console.log(`[${timestamp}][GameState] Received Initial Players/Paddles/Balls State`); // Keep
         const initialPlayers = Array(4).fill(null);
         const initialPaddles = Array(4).fill(null);
         const initialBalls: Ball[] = [];
@@ -203,7 +232,7 @@ export function useGameState(lastMessage: MessageEvent<string> | null): GameStat
         // Process balls, ensuring R3fX/Y are included
         data.balls.forEach(bState => {
           if (bState) {
-            // Directly use the combined struct which includes R3F coords
+            // console.log(`[${timestamp}][GameState] Initial Ball ${bState.id} phasing: ${bState.phasing}`); // Removed log
             initialBalls.push({ ...bState });
           }
         });
@@ -211,15 +240,14 @@ export function useGameState(lastMessage: MessageEvent<string> | null): GameStat
         setOriginalPlayers(initialPlayers);
         setOriginalPaddles(initialPaddles);
         setOriginalBalls(initialBalls);
-        // Optional: Set canvasSize if received: setCanvasSize(data.canvasSize);
       } else if (isGameOver(data)) {
-        console.log(`[${timestamp}] Received Game Over message:`, data);
+        console.log(`[${timestamp}][GameState] Received Game Over message:`, data); // Keep
         setGameOverInfo(data);
         isGameOverRef.current = true;
       } else if (isGameUpdatesBatch(data)) {
         if (isGameOverRef.current) return; // Don't process updates after game over
 
-        // Apply updates to players, paddles, balls
+        // Apply updates using functional updates to ensure we have the latest state
         setOriginalPlayers(current => applyUpdates(current, data.updates, processPlayerUpdate));
         setOriginalPaddles(current => applyUpdates(current, data.updates, processPaddleUpdate));
         setOriginalBalls(current => applyUpdates(current, data.updates, processBallUpdate));
@@ -231,10 +259,10 @@ export function useGameState(lastMessage: MessageEvent<string> | null): GameStat
           setBrickStates(gridUpdate.bricks); // Directly store the flat list
         }
       } else {
-        console.warn(`[${timestamp}] Received unknown message structure:`, data);
+        console.warn(`[${timestamp}][GameState] Received unknown message structure:`, data); // Keep warning
       }
     } catch (e) {
-      console.error('Failed to parse WebSocket message:', e);
+      console.error('Failed to parse WebSocket message:', e); // Keep error
     }
   }, [lastMessage]); // Dependency is the last message
 

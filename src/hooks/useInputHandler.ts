@@ -64,7 +64,7 @@ export function useInputHandler({
     const handleBlur = () => {
       // Use the captured ref value
       if (currentQueue.getCurrentDirection() !== 'Stop') {
-        console.log("[Input KB Hook] Window blurred, reporting Stop.");
+        // console.log("[Input KB Hook] Window blurred, reporting Stop."); // Removed log
         currentQueue.clear();
         reportVisualDirectionIfChanged();
       }
@@ -85,7 +85,7 @@ export function useInputHandler({
 
       // Use the captured ref value (currentQueue) in the cleanup
       if (currentIsEnabled && currentQueue.getCurrentDirection() !== 'Stop') {
-        console.log("[Input KB Hook] Cleanup reporting Stop.");
+        // console.log("[Input KB Hook] Cleanup reporting Stop."); // Removed log
         currentQueue.clear(); // Clear the queue state
         // Directly call the handler if needed, as reportVisualDirectionIfChanged relies on current state
         onVisualDirectionChange('Stop');
