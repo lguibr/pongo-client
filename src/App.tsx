@@ -1,95 +1,79 @@
 // File: src/App.tsx
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import styled from 'styled-components';
+import { useCallback, useMemo, useState, useRef } from 'react';
+import styled, { DefaultTheme, ThemeProvider } from 'styled-components';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
+import * as THREE from 'three';
 
-import GameCanvas from './components/GameCanvas';
+import R3FCanvas from './components/R3FCanvas';
+import StatusOverlay from './components/StatusOverlay';
 import { WEBSOCKET_URL } from './utils/constants';
-import {
-  DirectionMessage,
-  GameStateUpdateMessage,
-  PlayerAssignmentMessage,
-  InitialGridStateMessage,
-  GameOverMessage,
-  IncomingMessage, // Union type
-  isPlayerAssignment, // Type guards
-  isInitialGridState,
-  isGameStateUpdate,
-  isGameOver,
-  Player,
-  Paddle,
-  Ball,
-  Grid,
-} from './types/game';
-import { useWindowSize } from './hooks/useWindowSize';
-import { usePlayerRotation } from './hooks/usePlayerRotation';
+import { DirectionMessage, Player, VisualDirection } from './types/game';
 import { useInputHandler } from './hooks/useInputHandler';
-import { AppTheme } from './styles/theme'; // Import theme type for props
-import theme from './styles/theme'; // Import theme for useMemo calculation
+import { useGameState } from './hooks/useGameState';
+import { usePlayerRotation } from './utils/rotation';
+import { useWindowSize } from './hooks/useWindowSize';
+import GlobalStyle from './styles/GlobalStyle';
+import theme from './styles/theme';
 
-// --- Styled Components --- (Using Theme)
-
-const AppContainer = styled.div`
+// --- Styled Components ---
+const AppContainer = styled.div<{ theme: DefaultTheme }>`
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  background-color: ${({ theme }) => theme.colors.background};
 `;
-
-const Header = styled.header<{ theme: AppTheme }>`
+const Header = styled.header<{ theme: DefaultTheme }>`
   height: ${({ theme }) => theme.sizes.headerHeight};
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10; // Ensure header is above canvas elements if needed
+  z-index: 10;
+  flex-shrink: 0;
 `;
-
 const Logo = styled.img`
-  height: 30px; // Consider making this themeable
+  height: 30px;
   margin-right: 10px;
 `;
-
-const Title = styled.h1<{ theme: AppTheme }>`
+const Title = styled.h1<{ theme: DefaultTheme }>`
   font-size: ${({ theme }) => theme.fonts.sizes.title};
   font-weight: 500;
   color: ${({ theme }) => theme.colors.textDim};
 `;
-
-const CanvasArea = styled.div`
-  position: relative; // Needed for absolute positioning of ScoreBoard/GameOver
-  flex: 1;
+const CanvasArea = styled.div<{ theme: DefaultTheme }>`
+  position: relative;
+  flex-grow: 1;
+  min-height: 0;
   display: flex;
-  justify-content: center; // Center canvas horizontally
-  align-items: center; // Center canvas vertically
-  touch-action: none; // Prevent default touch actions like scrolling/zooming
+  justify-content: center;
+  align-items: center;
+  padding: ${({ theme }) => theme.sizes.minScreenPadding};
+  overflow: hidden;
 `;
-
-const ScoreBoard = styled.div<{ theme: AppTheme }>`
+const ScoreBoard = styled.div<{ theme: DefaultTheme }>`
   position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 20; // Above canvas
+  top: 15px;
+  left: 15px;
+  z-index: 20;
   background: ${({ theme }) => theme.colors.scoreboardBackground};
-  padding: 5px 10px;
+  padding: 10px 15px;
   border-radius: ${({ theme }) => theme.sizes.borderRadius};
+  border: 1px solid ${({ theme }) => theme.colors.scoreboardBorder};
   font-size: ${({ theme }) => theme.fonts.sizes.score};
-  color: ${({ theme }) => theme.colors.text}; // Use primary text color
-`;
+  font-family: ${({ theme }) => theme.fonts.monospace};
+  color: ${({ theme }) => theme.colors.text};
+  box-shadow: ${({ theme }) => theme.shadows.scoreboard};
+  line-height: 1.4;
 
-const CanvasWrapper = styled.div<{
-  $size: number;
-  $rotate: number;
-  theme: AppTheme;
-}>`
-  width: ${(p) => p.$size}px;
-  height: ${(p) => p.$size}px;
-  background: ${({ theme }) => theme.colors.background}; // Use theme background
-  box-shadow: ${({ theme }) => theme.shadows.canvas};
-  transform: rotate(${(p) => p.$rotate}deg);
-  transform-origin: center center;
+  div {
+    margin-bottom: 4px;
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
 `;
-
-const GameOverOverlay = styled.div<{ theme: AppTheme }>`
+const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   position: absolute;
   top: 0;
   left: 0;
@@ -103,148 +87,201 @@ const GameOverOverlay = styled.div<{ theme: AppTheme }>`
   color: ${({ theme }) => theme.colors.text};
   z-index: 50;
   text-align: center;
+  h2 { font-size: 2.5em; margin-bottom: 20px; color: ${({ theme }) => theme.colors.accent}; }
+  p { font-size: 1.2em; margin-bottom: 15px; }
+  ul { list-style: none; padding: 0; margin-top: 10px; }
+  li { margin-bottom: 5px; }
+`;
+const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
+  height: ${({ theme }) => theme.sizes.mobileControlsHeight};
+  display: flex;
+  flex-shrink: 0;
+  z-index: 30;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+`;
 
-  h2 {
-    font-size: 2.5em;
-    margin-bottom: 20px;
-    color: ${({ theme }) => theme.colors.accent};
+// Add isActive prop for styling
+const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
+  flex: 1;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: ${({ theme, isActive }) => isActive ? theme.colors.mobileButtonBackgroundActive : theme.colors.mobileButtonBackground};
+  border: none;
+  border-top: 1px solid ${({ theme }) => theme.colors.mobileButtonBorder};
+  color: ${({ theme }) => theme.colors.mobileButtonSymbol};
+  font-size: ${({ theme }) => theme.fonts.sizes.mobileButtonSymbol};
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.1s ease-out, transform 0.05s ease-out;
+  outline: none;
+  transform: ${({ isActive }) => isActive ? 'scale(0.98)' : 'scale(1)'}; /* Apply scale when active */
+
+  &:first-child {
+    border-right: 1px solid ${({ theme }) => theme.colors.mobileButtonBorder};
   }
 
-  p {
-    font-size: 1.2em;
-    margin-bottom: 15px;
-  }
-
-  ul {
-    list-style: none;
-    padding: 0;
-    margin-top: 10px;
-  }
-
-  li {
-    margin-bottom: 5px;
+  /* Keep :active for immediate feedback, but rely on isActive for sustained visual state */
+  &:active {
+    background-color: ${({ theme }) => theme.colors.mobileButtonBackgroundActive};
+    transform: scale(0.98);
   }
 `;
 
+
 // --- App Component ---
 
-export default function App() {
-  // State for dynamic game elements
-  const [players, setPlayers] = useState<(Player | null)[]>([]);
-  const [paddles, setPaddles] = useState<(Paddle | null)[]>([]);
-  const [balls, setBalls] = useState<(Ball | null)[]>([]);
+function AppContent() {
+  const { width } = useWindowSize();
+  const isMobileView = useMemo(() => width < 1024, [width]);
+  const lastSentMobileLogicalDir = useRef<DirectionMessage['direction'] | null>(null);
+  const lastSentLogicalKeyboardDir = useRef<DirectionMessage['direction'] | null>(null);
+  const [leftActive, setLeftActive] = useState(false); // State for button visual feedback
+  const [rightActive, setRightActive] = useState(false); // State for button visual feedback
 
-  // State for static grid/canvas info (received once)
-  const [grid, setGrid] = useState<Grid | null>(null);
-  const [canvasSize, setCanvasSize] = useState<number>(0);
-  const [gridSize, setGridSize] = useState<number>(0);
-  const [cellSize, setCellSize] = useState<number>(0);
-
-  // State for client-specific info
-  const [myPlayerIndex, setMyPlayerIndex] = useState<number | null>(null);
-
-  // State for game over
-  const [gameOverInfo, setGameOverInfo] = useState<GameOverMessage | null>(
-    null
-  );
-
-  const { width: windowWidth, height: windowHeight } = useWindowSize();
-  const rotationDegrees = usePlayerRotation(myPlayerIndex);
-
+  // --- WebSocket Connection ---
   const { sendMessage, lastMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
     shouldReconnect: () => true,
     reconnectInterval: 3000,
     filter: (msg): msg is MessageEvent<string> =>
-      typeof msg.data === 'string' && msg.data.startsWith('{'), // Basic JSON filter
+      typeof msg.data === 'string' && msg.data.startsWith('{'),
   });
 
+  // --- Game State Management ---
+  const {
+    originalPlayers,
+    originalPaddles,
+    originalBalls,
+    brickStates,
+    cellSize,
+    myPlayerIndex,
+    gameOverInfo,
+  } = useGameState(lastMessage);
+
+  // --- Rotation Angle Calculation ---
+  const rotationDegrees = usePlayerRotation(myPlayerIndex);
+  const rotationRadians = useMemo(() => THREE.MathUtils.degToRad(rotationDegrees), [rotationDegrees]);
+
+  // --- Connection Status Logic ---
   const connectionStatus = useMemo(() => {
     switch (readyState) {
-      case ReadyState.CONNECTING: return 'connecting';
-      case ReadyState.OPEN: return 'open';
-      case ReadyState.CLOSING: return 'closing';
-      case ReadyState.CLOSED: return 'closed';
-      default: return 'error'; // Assuming UNINSTANTIATED maps to error or similar
+      case ReadyState.CONNECTING: return ReadyState.CONNECTING;
+      case ReadyState.OPEN: return ReadyState.OPEN;
+      case ReadyState.CLOSING: return ReadyState.CLOSING;
+      case ReadyState.CLOSED: return ReadyState.CLOSED;
+      case ReadyState.UNINSTANTIATED: return ReadyState.CONNECTING; // Treat uninstantiated as connecting
+      default: return 'error'; // Custom error state
     }
   }, [readyState]);
 
-  // Handle incoming WebSocket messages
-  useEffect(() => {
-    if (!lastMessage?.data) return;
-    try {
-      const data: IncomingMessage = JSON.parse(lastMessage.data); // Parse into union type
+  const isGameActive = connectionStatus === ReadyState.OPEN && !gameOverInfo; // Game is active if connected and not over
+  const isGameReady = isGameActive && brickStates.length > 0 && cellSize > 0;
 
-      // Use type guards to handle different messages
-      if (isPlayerAssignment(data)) {
-        console.log(`Assigning Player Index: ${data.playerIndex}`);
-        setMyPlayerIndex(data.playerIndex);
-        setGameOverInfo(null); // Reset game over state on new assignment
-      } else if (isInitialGridState(data)) {
-        console.log('Received Initial Grid State');
-        setCanvasSize(data.canvasWidth); // Assuming width=height=canvasSize
-        setGridSize(data.gridSize);
-        setCellSize(data.cellSize);
-        setGrid(data.grid);
-      } else if (isGameStateUpdate(data)) {
-        // Update dynamic state only if game is not over
-        if (!gameOverInfo) {
-          setPlayers(data.players);
-          setPaddles(data.paddles);
-          setBalls(data.balls);
-        }
-      } else if (isGameOver(data)) {
-        console.log('Received Game Over message:', data);
-        setGameOverInfo(data);
-      } else {
-        console.warn('Received unknown message structure:', data);
-      }
-    } catch (e) {
-      console.error('Failed to parse WebSocket message:', e);
-    }
-  }, [lastMessage, gameOverInfo]); // Add gameOverInfo dependency
+  const displayStatus = useMemo(() => {
+    if (gameOverInfo) return null;
+    if (isGameReady) return null;
+    if (connectionStatus === ReadyState.OPEN && !isGameReady) return 'waiting'; // Custom waiting state
+    if (connectionStatus === ReadyState.OPEN) return null; // Don't show overlay if open but not ready yet (handled by 'waiting')
+    return connectionStatus; // Return ReadyState enum value or 'error'
+  }, [connectionStatus, isGameReady, gameOverInfo]);
 
-  // Callback to send direction messages
-  const sendDirectionMessage = useCallback(
-    (direction: DirectionMessage['direction']) => {
-      if (connectionStatus === 'open' && !gameOverInfo) { // Don't send input if game over
-        sendMessage(JSON.stringify({ direction }));
+  // --- Input Logic ---
+
+  // Callback to send the final logical direction message
+  const sendLogicalDirectionMessage = useCallback(
+    (logicalDir: DirectionMessage['direction'], source: 'kb' | 'mobile') => {
+      if (!isGameActive) return; // Use isGameActive check
+
+      // Prevent sending duplicate commands from the *same source*
+      if (source === 'kb') {
+        if (logicalDir === lastSentLogicalKeyboardDir.current) return;
+        lastSentLogicalKeyboardDir.current = logicalDir;
+      } else { // mobile
+        if (logicalDir === lastSentMobileLogicalDir.current) return;
+        lastSentMobileLogicalDir.current = logicalDir;
       }
+
+      console.log(`[Input App] Sending Logical: ${logicalDir} from ${source} (Player: ${myPlayerIndex})`);
+      sendMessage(JSON.stringify({ direction: logicalDir }));
     },
-    [connectionStatus, sendMessage, gameOverInfo] // Add gameOverInfo dependency
+    [isGameActive, sendMessage, myPlayerIndex] // Use isGameActive
   );
 
-  // Setup input handling using the custom hook
+  // Mapping function
+   
+  const mapDirection = useCallback((visualDir: VisualDirection): DirectionMessage['direction'] => {
+    if (visualDir === 'Stop') return 'Stop';
+
+    // Player indices 0 and 2 have paddles oriented vertically on the backend
+    // Player indices 1 and 3 have paddles oriented horizontally on the backend
+
+    // Determine the effective rotation based on player index
+    const rotation = rotationDegrees; // 0, 90, 180, 270
+
+    // Map visual direction (left/right on screen) to logical direction (backend movement)
+    if (rotation === 0) { // Player 3 (Bottom)
+      return visualDir; // Left is Left, Right is Right
+    } else if (rotation === 90) { // Player 2 (Left)
+      return visualDir === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft'; // Visual Left is Logical Right, Visual Right is Logical Left
+    } else if (rotation === 180) { // Player 1 (Top)
+      return visualDir === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft'; // Visual Left is Logical Right, Visual Right is Logical Left
+    } else { // rotation === 270, Player 0 (Right)
+      return visualDir; // Left is Left, Right is Right
+    }
+  }, [myPlayerIndex, rotationDegrees]); // myPlayerIndex is needed because rotationDegrees depends on it
+
+
+  // Handler for visual direction changes from the keyboard hook
+  const handleKeyboardVisualChange = useCallback((visualDir: VisualDirection) => {
+    // Update button active state based on keyboard
+    setLeftActive(visualDir === 'ArrowLeft');
+    setRightActive(visualDir === 'ArrowRight');
+
+    // Map and send logical direction
+    const logicalDir = mapDirection(visualDir);
+    sendLogicalDirectionMessage(logicalDir, 'kb');
+  }, [mapDirection, sendLogicalDirectionMessage]);
+
+  // Keyboard Input Hook - Now always enabled when game is active
   useInputHandler({
-    isEnabled: connectionStatus === 'open' && !gameOverInfo, // Disable input if game over
-    rotationDegrees,
-    sendDirection: sendDirectionMessage,
+    isEnabled: isGameActive, // Enable hook whenever game is active
+    onVisualDirectionChange: handleKeyboardVisualChange,
   });
 
-  // Calculate canvas display size based on window dimensions
-  const canvasDisplaySize = useMemo(() => {
-    const headerHeight = parseInt(theme.sizes.headerHeight, 10) || 50;
-    const gap = parseInt(theme.sizes.canvasGap, 10) || 20;
-    const availableWidth = windowWidth - gap;
-    const availableHeight = windowHeight - headerHeight - gap;
-    return Math.max(100, Math.min(availableWidth, availableHeight)); // Ensure a minimum size
-  }, [windowWidth, windowHeight]);
+  // --- Mobile Button Handlers ---
+  const handleTouchStart = useCallback((visualDir: 'ArrowLeft' | 'ArrowRight') => (e: React.TouchEvent) => {
+    e.preventDefault();
+    // Set active state for the pressed button
+    if (visualDir === 'ArrowLeft') setLeftActive(true);
+    if (visualDir === 'ArrowRight') setRightActive(true);
 
-  // Calculate scale factor for rendering game elements
-  const scaleFactor = useMemo(() => {
-    // Use the canvasSize state variable
-    return canvasSize > 0 ? canvasDisplaySize / canvasSize : 1;
-  }, [canvasSize, canvasDisplaySize]);
+    const logicalDir = mapDirection(visualDir);
+    sendLogicalDirectionMessage(logicalDir, 'mobile');
+  }, [mapDirection, sendLogicalDirectionMessage]);
 
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    // Deactivate both buttons on release
+    setLeftActive(false);
+    setRightActive(false);
+
+    const logicalDir = mapDirection('Stop');
+    sendLogicalDirectionMessage(logicalDir, 'mobile');
+  }, [mapDirection, sendLogicalDirectionMessage]);
+
+
+  // --- Render Logic ---
   const renderGameOver = () => {
     if (!gameOverInfo) return null;
-
     const winnerText =
       gameOverInfo.winnerIndex === -1
         ? 'It\'s a Tie!'
         : `Player ${gameOverInfo.winnerIndex} Wins!`;
-
     return (
-      <GameOverOverlay>
+      <GameOverOverlay theme={theme}>
         <h2>Game Over!</h2>
         <p>{winnerText}</p>
         <p>Reason: {gameOverInfo.reason}</p>
@@ -256,47 +293,81 @@ export default function App() {
             </li>
           ))}
         </ul>
-        {/* Add a button to reconnect/start new game? */}
       </GameOverOverlay>
     );
   };
 
   return (
-    <AppContainer>
-      <Header>
+    <AppContainer theme={theme}>
+      <Header theme={theme}>
         <Logo src="/bitmap.png" alt="PonGo Logo" />
-        <Title>PonGo</Title>
+        <Title theme={theme}>PonGo</Title>
       </Header>
-      <CanvasArea>
-        {/* Scoreboard outside the rotated wrapper */}
-        <ScoreBoard>
-          {myPlayerIndex !== null && <div>Player: {myPlayerIndex}</div>}
-          {players
-            .filter((p): p is Player => p !== null) // Type assertion
+
+      <CanvasArea theme={theme}>
+        {(isGameReady || displayStatus === 'waiting') && (
+          <R3FCanvas
+            brickStates={brickStates}
+            cellSize={cellSize}
+            paddles={originalPaddles}
+            balls={originalBalls}
+            rotationAngle={rotationRadians}
+            wsStatus={connectionStatus === ReadyState.OPEN ? 'open' : 'closed'} // Simplify status for canvas
+          />
+        )}
+        <ScoreBoard theme={theme}>
+          {myPlayerIndex !== null && <div>You: P{myPlayerIndex}</div>}
+          {originalPlayers
+            .filter((p): p is Player => p !== null)
             .map((p) => (
               <div key={p.index}>
-                P{p.index}: {p.score}
+                P{p.index}: {String(p.score).padStart(3, ' ')}
               </div>
             ))}
         </ScoreBoard>
-
-        <CanvasWrapper $size={canvasDisplaySize} $rotate={rotationDegrees}>
-          <GameCanvas
-            // Pass static info
-            logicalWidth={canvasSize}
-            logicalHeight={canvasSize} // Assuming square
-            grid={grid}
-            cellSize={cellSize}
-            // Pass dynamic info
-            paddles={paddles}
-            balls={balls}
-            // Pass status and scale
-            wsStatus={connectionStatus}
-            scaleFactor={scaleFactor}
-          />
-        </CanvasWrapper>
+        {/* Simplified condition: Render overlay if displayStatus is truthy */}
+        {displayStatus && (
+          <StatusOverlay status={displayStatus} theme={theme} />
+        )}
         {renderGameOver()}
       </CanvasArea>
+
+      {/* Mobile Controls - Render based on viewport, enable based on game state */}
+      {isMobileView && (
+        <MobileControlsContainer theme={theme}>
+          <ControlButton
+            theme={theme}
+            isActive={leftActive} // Pass active state
+            onTouchStart={isGameActive ? handleTouchStart('ArrowLeft') : undefined} // Only handle if game active
+            onTouchEnd={isGameActive ? handleTouchEnd : undefined}
+            // Disable button visually if game not active
+            disabled={!isGameActive}
+            style={{ cursor: isGameActive ? 'pointer' : 'not-allowed' }}
+          >
+            ◀
+          </ControlButton>
+          <ControlButton
+            theme={theme}
+            isActive={rightActive} // Pass active state
+            onTouchStart={isGameActive ? handleTouchStart('ArrowRight') : undefined} // Only handle if game active
+            onTouchEnd={isGameActive ? handleTouchEnd : undefined}
+            // Disable button visually if game not active
+            disabled={!isGameActive}
+            style={{ cursor: isGameActive ? 'pointer' : 'not-allowed' }}
+          >
+            ▶
+          </ControlButton>
+        </MobileControlsContainer>
+      )}
     </AppContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <GlobalStyle />
+      <AppContent />
+    </ThemeProvider>
   );
 }
