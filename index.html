@@ -1,13 +1,28 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <!-- Make sure you have a general favicon, PWA icons will be specified in manifest -->
+  <link rel="icon" type="image/png" href="/bitmap.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- PWA related tags will be injected by vite-plugin-pwa -->
+  <!-- For example: -->
+  <!-- <link rel="manifest" href="/manifest.json"> -->
+  <!-- <meta name="theme-color" content="#000000"> -->
+
+  <title>PonGo</title>
+  <meta name="description" content="PonGo - A multiplayer Pong-like game with bricks and mayhem!">
+
+  <!-- Apple touch icon (optional but good for iOS "Add to Home Screen") -->
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

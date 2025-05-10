@@ -1,0 +1,31 @@
+""""""{
+  "name": "PonGo Game",
+  "short_name": "PonGo",
+  "description": "A multiplayer Pong-like game with bricks and mayhem, built with React and Three.js.",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/bitmap.png",
+      "sizes": "400x225",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "scope": "/"
+}

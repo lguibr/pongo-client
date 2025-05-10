@@ -1,9 +1,7 @@
-
-// File: src/main.tsx
 import { createRoot } from 'react-dom/client';
-import { ThemeProvider } from 'styled-components'; // Keep for outer UI
+import { ThemeProvider } from 'styled-components';
 import App from './App.tsx';
-import GlobalStyle from './styles/GlobalStyle.ts'; // Keep for outer UI
+import GlobalStyle from './styles/GlobalStyle.ts';
 import theme from './styles/theme.ts';
 import './index.css';
 
@@ -12,12 +10,26 @@ if (!container) {
   throw new Error("Root element #root not found in the document.");
 }
 
+// Function to adjust root height to actual window inner height
+const adjustRootHeight = () => {
+  const rootElement = document.getElementById('root');
+  if (rootElement) {
+    rootElement.style.height = `${window.innerHeight}px`;
+  }
+};
+
+// Initial adjustment
+adjustRootHeight();
+
+// Adjust on resize and orientation change
+window.addEventListener('resize', adjustRootHeight);
+window.addEventListener('orientationchange', adjustRootHeight);
+
 const root = createRoot(container);
 
 root.render(
-  // ThemeProvider still wraps App for outer UI elements
   <ThemeProvider theme={theme}>
-    <GlobalStyle /> {/* Apply global styles for body, etc. */}
+    <GlobalStyle />
     <App />
   </ThemeProvider>
 );
