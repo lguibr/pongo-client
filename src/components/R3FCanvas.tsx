@@ -149,11 +149,11 @@ const R3FCanvas: React.FC<R3FCanvasProps> = ({
   const gameContentWidth = useMemo(() => boundaries.extentX * 2, [boundaries.extentX]);
   const gameContentHeight = useMemo(() => boundaries.extentY * 2, [boundaries.extentY]);
 
-  const fov = 45;
+  const fov = 16;
   const minCamDist = Math.max(gameContentWidth, gameContentHeight) * 0.7;
-  const camPaddingFactor = 1.15;
+  const camPaddingFactor = 1.10;
   const camXOffsetFactor = 0.0;
-  const camYOffsetFactor = -0.35;
+  const camYOffsetFactor = -0.55;
 
   return (
     <Canvas

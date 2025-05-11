@@ -219,11 +219,15 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
 const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
   height: ${({ theme }) => theme.sizes.mobileControlsHeight};
   display: flex;
+  gap: 1rem;
+  padding: .5rem;
   flex-shrink: 0;
   z-index: 30;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  justify-content: space-around;
+  margin-bottom: max(env(safe-area-inset-top, 12px),12px);
 `;
 
 const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`

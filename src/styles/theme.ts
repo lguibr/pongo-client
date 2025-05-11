@@ -75,7 +75,7 @@ const theme = {
     boundaryWallThickness: 10,
     boundaryWallDepth: 16,
     mobileControlsHeight: '80px',
-    brickDepthPerLifeUnit: 0.16,
+    brickDepthPerLifeUnit: 0.12,
   },
   shadows: {
     canvas: '0 0 10px rgba(0, 0, 0, 0.2)',
