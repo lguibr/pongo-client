@@ -9,20 +9,23 @@ interface Paddle3DProps {
   position: [number, number, number];
 }
 
-const COLLISION_LIGHT_INTENSITY = 6; // Point light flash intensity
-const COLLISION_MATERIAL_EMISSIVE_INTENSITY = 1.2; // How much the paddle material glows on hit
-const COLLISION_EFFECT_DURATION = 150; // Duration of the flash/glow in ms
+// Flat material properties
+const PADDLE_ROUGHNESS = 0.8;
+const PADDLE_METALNESS = 0.1;
+const PADDLE_EMISSIVE_INTENSITY_BASE = 0; // No base glow
+const PADDLE_COLLISION_EMISSIVE_INTENSITY = 0.4; // Subtle glow on collision
+const COLLISION_EFFECT_DURATION = 100; // ms for collision glow
+const PADDLE_ENV_MAP_INTENSITY = 0.3;
+
 
 const Paddle3D: React.FC<Paddle3DProps> = ({ data, position }) => {
   const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null!);
-  const lightRef = useRef<THREE.PointLight>(null!);
-  const [pointLightIntensity, setPointLightIntensity] = useState(0);
-  const [materialEmissiveIntensity, setMaterialEmissiveIntensity] = useState(0); // State for material glow
-  const color = getPaddleColorByPlayerIndex(data.index);
-  const lightColor = useMemo(() => new THREE.Color(color), [color]);
+  const [currentEmissiveIntensity, setCurrentEmissiveIntensity] = useState(PADDLE_EMISSIVE_INTENSITY_BASE);
 
-  // Determine depth based on orientation
+  const color = getPaddleColorByPlayerIndex(data.index);
+  const baseColorThree = useMemo(() => new THREE.Color(color), [color]);
+
   const depth = (data.index === 0 || data.index === 2) ? data.width : data.height;
   const epsilon = 1e-5;
   const geometryArgs: [number, number, number] = [
@@ -37,75 +40,48 @@ const Paddle3D: React.FC<Paddle3DProps> = ({ data, position }) => {
     }
   }, [position]);
 
-  // Update color and base emissive properties
   useEffect(() => {
     if (materialRef.current) {
-      materialRef.current.color.set(color);
-      // Set base emissive color (will be modulated by intensity)
-      materialRef.current.emissive.set(color);
+      materialRef.current.color.set(baseColorThree);
+      materialRef.current.emissive.set(baseColorThree); // Emissive color same as base
+      materialRef.current.roughness = PADDLE_ROUGHNESS;
+      materialRef.current.metalness = PADDLE_METALNESS;
+      materialRef.current.envMapIntensity = PADDLE_ENV_MAP_INTENSITY;
+      materialRef.current.needsUpdate = true;
     }
-    if (lightRef.current) {
-      lightRef.current.color.set(lightColor);
-    }
-    // Set initial material emissive intensity (paddles don't have permanent glow)
-    setMaterialEmissiveIntensity(0);
-  }, [color, lightColor]);
+  }, [baseColorThree]);
 
-  // Collision effect (flashing light + material glow)
   useEffect(() => {
     let effectTimeout: ReturnType<typeof setTimeout> | undefined;
-
     if (data.collided) {
-      setPointLightIntensity(COLLISION_LIGHT_INTENSITY); // Turn point light on
-      setMaterialEmissiveIntensity(COLLISION_MATERIAL_EMISSIVE_INTENSITY); // Make material glow brightly
-
-      // Set a timeout to turn off both effects
+      setCurrentEmissiveIntensity(PADDLE_COLLISION_EMISSIVE_INTENSITY);
       effectTimeout = setTimeout(() => {
-        setPointLightIntensity(0);
-        setMaterialEmissiveIntensity(0); // Reset to base (0 for paddles)
+        setCurrentEmissiveIntensity(PADDLE_EMISSIVE_INTENSITY_BASE);
       }, COLLISION_EFFECT_DURATION);
-
     } else {
-      // Ensure effects are off if not collided
-      setPointLightIntensity(0);
-      setMaterialEmissiveIntensity(0);
+      // If not collided and current intensity is not base, reset it.
+      // This handles cases where collision state might flip quickly.
+      if (currentEmissiveIntensity !== PADDLE_EMISSIVE_INTENSITY_BASE) {
+        setCurrentEmissiveIntensity(PADDLE_EMISSIVE_INTENSITY_BASE);
+      }
     }
+    return () => clearTimeout(effectTimeout);
+  }, [data.collided, currentEmissiveIntensity]); // Added currentEmissiveIntensity to deps
 
-    // Cleanup timeout on effect change or unmount
-    return () => {
-      clearTimeout(effectTimeout);
-      // Ensure effects are reset if component unmounts during flash
-      setPointLightIntensity(0);
-      setMaterialEmissiveIntensity(0);
-    };
-  }, [data.collided]); // Depend only on collision state
-
-  // Apply material emissive intensity state directly
   useEffect(() => {
     if (materialRef.current) {
-      materialRef.current.emissiveIntensity = materialEmissiveIntensity;
+      materialRef.current.emissiveIntensity = currentEmissiveIntensity;
     }
-  }, [materialEmissiveIntensity]);
+  }, [currentEmissiveIntensity]);
 
   return (
     <mesh ref={meshRef} castShadow receiveShadow>
       <boxGeometry args={geometryArgs} />
       <meshStandardMaterial
         ref={materialRef}
-        color={color}
-        roughness={0.5}
-        metalness={0.3}
-        emissive={color} // Set emissive color to paddle color
-        emissiveIntensity={materialEmissiveIntensity} // Controlled by state
+      // Properties set in useEffects
       />
-      {/* Point light for collision flash */}
-      <pointLight
-        ref={lightRef}
-        color={lightColor}
-        intensity={pointLightIntensity} // Controlled by state
-        distance={Math.max(data.width, data.height) * 3}
-        decay={2}
-      />
+      {/* Point light removed */}
     </mesh>
   );
 };

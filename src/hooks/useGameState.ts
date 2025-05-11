@@ -7,18 +7,18 @@ import {
   isPlayerLeft, isScoreUpdate, isPaddlePositionUpdate, isBallSpawned,
   isBallRemoved, isBallPositionUpdate, isBallOwnershipChange, BrickStateUpdate
 } from '../types/game';
+import { SoundEventType } from './useSoundManager';
 
 interface GameState {
   originalPlayers: (Player | null)[];
-  originalPaddles: (Paddle | null)[]; // Now includes r3fX/Y
-  originalBalls: Ball[];             // Now includes r3fX/Y
-  brickStates: BrickStateUpdate[];   // Store flat list of bricks with R3F coords
-  cellSize: number;                  // Store cell size for geometry
+  originalPaddles: (Paddle | null)[];
+  originalBalls: Ball[];
+  brickStates: BrickStateUpdate[];
+  cellSize: number;
   myPlayerIndex: number | null;
   gameOverInfo: GameOverMessage | null;
 }
 
-// Helper to format timestamp with milliseconds
 const getTimestamp = (): string => {
   const now = new Date();
   const time = now.toLocaleTimeString('en-US', {
@@ -31,9 +31,12 @@ const getTimestamp = (): string => {
   return `${time}.${ms}`;
 };
 
-
-// --- Specific Update Processors (Internal Helpers - Modified for R3F Coords) ---
-const processPlayerUpdate = (currentPlayers: (Player | null)[], update: AtomicUpdate): (Player | null)[] | null => {
+// --- Specific Update Processors (Modified to include playSound calls) ---
+const processPlayerUpdate = (
+  currentPlayers: (Player | null)[],
+  update: AtomicUpdate
+  // playSound parameter removed as it was unused here
+): (Player | null)[] | null => {
   let newPlayers = currentPlayers;
   let changed = false;
   if (isPlayerJoined(update)) {
@@ -61,7 +64,11 @@ const processPlayerUpdate = (currentPlayers: (Player | null)[], update: AtomicUp
   return changed ? newPlayers : null;
 };
 
-const processPaddleUpdate = (currentPaddles: (Paddle | null)[], update: AtomicUpdate): (Paddle | null)[] | null => {
+const processPaddleUpdate = (
+  currentPaddles: (Paddle | null)[],
+  update: AtomicUpdate,
+  playSound: (type: SoundEventType, index?: number) => void
+): (Paddle | null)[] | null => {
   let newPaddles = currentPaddles;
   let changed = false;
   if (isPlayerJoined(update)) {
@@ -69,7 +76,6 @@ const processPaddleUpdate = (currentPaddles: (Paddle | null)[], update: AtomicUp
     if (paddleIndex >= 0 && paddleIndex < 4) {
       if (newPaddles[paddleIndex] === null || newPaddles[paddleIndex]?.index !== update.paddle.index) {
         if (!changed) { newPaddles = [...currentPaddles]; changed = true; }
-        // PlayerJoined now includes R3F coords
         newPaddles[paddleIndex] = { ...update.paddle, r3fX: update.r3fX, r3fY: update.r3fY };
       }
     }
@@ -79,38 +85,43 @@ const processPaddleUpdate = (currentPaddles: (Paddle | null)[], update: AtomicUp
       newPaddles[update.index] = null;
     }
   } else if (isPaddlePositionUpdate(update)) {
-    if (update.index >= 0 && update.index < 4 && newPaddles[update.index]) {
-      const currentPaddle = newPaddles[update.index]!;
-      // Check if any relevant property changed
-      if (currentPaddle.x !== update.x || currentPaddle.y !== update.y ||
-        currentPaddle.r3fX !== update.r3fX || currentPaddle.r3fY !== update.r3fY || // Check R3F coords too
+    const paddleIndex = update.index;
+    if (paddleIndex >= 0 && paddleIndex < 4 && newPaddles[paddleIndex]) {
+      const currentPaddle = newPaddles[paddleIndex]!;
+      const relevantPropsChanged = currentPaddle.x !== update.x || currentPaddle.y !== update.y ||
+        currentPaddle.r3fX !== update.r3fX || currentPaddle.r3fY !== update.r3fY ||
         currentPaddle.vx !== update.vx || currentPaddle.vy !== update.vy ||
-        currentPaddle.isMoving !== update.isMoving || currentPaddle.collided !== update.collided) {
+        currentPaddle.isMoving !== update.isMoving || currentPaddle.collided !== update.collided;
+
+      if (relevantPropsChanged) {
         if (!changed) { newPaddles = [...currentPaddles]; changed = true; }
-        newPaddles[update.index] = {
-          // ...currentPaddle, // Spread existing paddle data
-          index: update.index, // Ensure index is kept
-          x: update.x, y: update.y, // Update original coords
-          r3fX: update.r3fX, r3fY: update.r3fY, // Update R3F coords
-          width: update.width, height: update.height, // Update dimensions
+        newPaddles[paddleIndex] = {
+          index: update.index, x: update.x, y: update.y,
+          r3fX: update.r3fX, r3fY: update.r3fY,
+          width: update.width, height: update.height,
           vx: update.vx, vy: update.vy,
           isMoving: update.isMoving, collided: update.collided,
         };
+        if (update.collided && !currentPaddle.collided) {
+          playSound('paddle_collision');
+        }
       }
     }
   }
   return changed ? newPaddles : null;
 };
 
-const processBallUpdate = (currentBalls: Ball[], update: AtomicUpdate): Ball[] | null => {
+const processBallUpdate = (
+  currentBalls: Ball[],
+  update: AtomicUpdate,
+  playSound: (type: SoundEventType, index?: number) => void
+): Ball[] | null => {
   let newBalls = currentBalls;
   let changed = false;
-  const timestamp = getTimestamp(); // Use helper function
+  const timestamp = getTimestamp();
 
   if (isBallSpawned(update)) {
     if (newBalls.findIndex(b => b.id === update.ball.id) === -1) {
-      // console.log(`[${timestamp}][GameState] Spawning Ball ${update.ball.id} with phasing: ${update.ball.phasing}`); // Removed log
-      // BallSpawned now includes R3F coords
       newBalls = [...currentBalls, { ...update.ball, r3fX: update.r3fX, r3fY: update.r3fY }];
       changed = true;
     }
@@ -118,7 +129,6 @@ const processBallUpdate = (currentBalls: Ball[], update: AtomicUpdate): Ball[] |
     const initialLength = newBalls.length;
     const filteredBalls = newBalls.filter(b => b.id !== update.id);
     if (filteredBalls.length !== initialLength) {
-      // console.log(`[${timestamp}][GameState] Removing Ball ${update.id}`); // Removed log
       newBalls = filteredBalls;
       changed = true;
     }
@@ -126,8 +136,6 @@ const processBallUpdate = (currentBalls: Ball[], update: AtomicUpdate): Ball[] |
     const index = newBalls.findIndex(b => b.id === update.id);
     if (index !== -1) {
       const currentBall = newBalls[index];
-
-      // Check if any relevant property changed
       const positionChanged = currentBall.x !== update.x || currentBall.y !== update.y ||
         currentBall.r3fX !== update.r3fX || currentBall.r3fY !== update.r3fY;
       const velocityChanged = currentBall.vx !== update.vx || currentBall.vy !== update.vy;
@@ -135,50 +143,44 @@ const processBallUpdate = (currentBalls: Ball[], update: AtomicUpdate): Ball[] |
       const phasingChanged = currentBall.phasing !== update.phasing;
 
       if (positionChanged || velocityChanged || collisionChanged || phasingChanged) {
-        // console.log(`[${timestamp}][GameState] Updating Ball ${update.id}: Pos=${positionChanged}, Vel=${velocityChanged}, Coll=${collisionChanged}, Phase=${phasingChanged} (Incoming: ${update.phasing})`); // Removed log
-
-        if (!changed) {
-          newBalls = [...currentBalls]; // Create a new array only if we haven't already in this batch for balls
-          changed = true;
-        }
-        // Create a new ball object for the update
+        if (!changed) { newBalls = [...currentBalls]; changed = true; }
         newBalls[index] = {
-          ...currentBall, // Spread existing ball data first
-          x: update.x, y: update.y, // Update original coords
-          r3fX: update.r3fX, r3fY: update.r3fY, // Update R3F coords
+          ...currentBall, x: update.x, y: update.y,
+          r3fX: update.r3fX, r3fY: update.r3fY,
           vx: update.vx, vy: update.vy,
-          collided: update.collided,
-          phasing: update.phasing, // Update phasing status
+          collided: update.collided, phasing: update.phasing,
         };
-        // console.log(`[${timestamp}][GameState] Ball ${update.id} state AFTER update: phasing=${newBalls[index].phasing}`); // Removed log
+        if (update.collided && !currentBall.collided) { // Check if collision state changed to true
+          playSound('ball_collision');
+        }
       }
     } else {
-      console.warn(`[${timestamp}][GameState] Received BallPositionUpdate for unknown Ball ID: ${update.id}`); // Keep this warning
+      console.warn(`[${timestamp}][GameState] Received BallPositionUpdate for unknown Ball ID: ${update.id}`);
     }
   } else if (isBallOwnershipChange(update)) {
     const index = newBalls.findIndex(b => b.id === update.id);
     if (index !== -1) {
       const currentBall = newBalls[index];
       if (currentBall.ownerIndex !== update.newOwnerIndex) {
-        // console.log(`[${timestamp}][GameState] Updating Ball ${update.id} owner to ${update.newOwnerIndex}`); // Removed log
         if (!changed) { newBalls = [...currentBalls]; changed = true; }
         newBalls[index] = { ...currentBall, ownerIndex: update.newOwnerIndex };
+        playSound('ball_ownership_change');
       }
     }
   }
   return changed ? newBalls : null;
 };
 
-// --- Generic Update Application Function (Internal Helper - Unchanged) ---
 function applyUpdates<T>(
   currentState: T,
   updates: AtomicUpdate[],
-  processor: (state: T, update: AtomicUpdate) => T | null
+  processor: (state: T, update: AtomicUpdate, playSound: (type: SoundEventType, index?: number) => void) => T | null,
+  playSound: (type: SoundEventType, index?: number) => void
 ): T {
   let newState = currentState;
   updates.forEach(update => {
-    if (isFullGridUpdate(update)) return; // Skip grid updates here
-    const processedState = processor(newState, update);
+    if (isFullGridUpdate(update)) return;
+    const processedState = processor(newState, update, playSound);
     if (processedState !== null) {
       newState = processedState;
     }
@@ -186,35 +188,39 @@ function applyUpdates<T>(
   return newState;
 }
 
-export function useGameState(lastMessage: MessageEvent<string> | null): GameState {
+export function useGameState(
+  lastMessage: MessageEvent<string> | null,
+  playSound: (type: SoundEventType, index?: number) => void
+): GameState {
   const [originalPlayers, setOriginalPlayers] = useState<(Player | null)[]>(Array(4).fill(null));
   const [originalPaddles, setOriginalPaddles] = useState<(Paddle | null)[]>(Array(4).fill(null));
   const [originalBalls, setOriginalBalls] = useState<Ball[]>([]);
-  const [brickStates, setBrickStates] = useState<BrickStateUpdate[]>([]); // Store flat list
-  const [cellSize, setCellSize] = useState<number>(0); // Store cell size for geometry
+  const [brickStates, setBrickStates] = useState<BrickStateUpdate[]>([]);
+  const [cellSize, setCellSize] = useState<number>(0);
   const [myPlayerIndex, setMyPlayerIndex] = useState<number | null>(null);
   const [gameOverInfo, setGameOverInfo] = useState<GameOverMessage | null>(null);
   const isGameOverRef = useRef(false);
+  const prevBrickStatesRef = useRef<BrickStateUpdate[]>([]);
 
   useEffect(() => {
     if (!lastMessage?.data) return;
     try {
       const data: IncomingMessage = JSON.parse(lastMessage.data);
-      const timestamp = getTimestamp(); // Use helper function
+      const timestamp = getTimestamp();
 
       if (isPlayerAssignment(data)) {
-        console.log(`[${timestamp}][GameState] Assigning Player Index: ${data.playerIndex}`); // Keep
+        console.log(`[${timestamp}][GameState] Assigning Player Index: ${data.playerIndex}`);
         setMyPlayerIndex(data.playerIndex);
-        // Reset all game state on new assignment
         setGameOverInfo(null);
         isGameOverRef.current = false;
-        setBrickStates([]); // Reset bricks
+        setBrickStates([]);
+        prevBrickStatesRef.current = [];
         setOriginalPlayers(Array(4).fill(null));
         setOriginalPaddles(Array(4).fill(null));
         setOriginalBalls([]);
         setCellSize(0);
       } else if (isInitialPlayersAndBallsState(data)) {
-        console.log(`[${timestamp}][GameState] Received Initial Players/Paddles/Balls State`); // Keep
+        console.log(`[${timestamp}][GameState] Received Initial Players/Paddles/Balls State`);
         const initialPlayers = Array(4).fill(null);
         const initialPaddles = Array(4).fill(null);
         const initialBalls: Ball[] = [];
@@ -222,17 +228,13 @@ export function useGameState(lastMessage: MessageEvent<string> | null): GameStat
         data.players.forEach(p => {
           if (p && p.index >= 0 && p.index < 4) initialPlayers[p.index] = { ...p };
         });
-        // Process paddles, ensuring R3fX/Y are included
         data.paddles.forEach(pState => {
           if (pState && pState.index >= 0 && pState.index < 4) {
-            // Directly use the combined struct which includes R3F coords
             initialPaddles[pState.index] = { ...pState };
           }
         });
-        // Process balls, ensuring R3fX/Y are included
         data.balls.forEach(bState => {
           if (bState) {
-            // console.log(`[${timestamp}][GameState] Initial Ball ${bState.id} phasing: ${bState.phasing}`); // Removed log
             initialBalls.push({ ...bState });
           }
         });
@@ -241,37 +243,46 @@ export function useGameState(lastMessage: MessageEvent<string> | null): GameStat
         setOriginalPaddles(initialPaddles);
         setOriginalBalls(initialBalls);
       } else if (isGameOver(data)) {
-        console.log(`[${timestamp}][GameState] Received Game Over message:`, data); // Keep
+        console.log(`[${timestamp}][GameState] Received Game Over message:`, data);
         setGameOverInfo(data);
         isGameOverRef.current = true;
       } else if (isGameUpdatesBatch(data)) {
-        if (isGameOverRef.current) return; // Don't process updates after game over
+        if (isGameOverRef.current) return;
 
-        // Apply updates using functional updates to ensure we have the latest state
-        setOriginalPlayers(current => applyUpdates(current, data.updates, processPlayerUpdate));
-        setOriginalPaddles(current => applyUpdates(current, data.updates, processPaddleUpdate));
-        setOriginalBalls(current => applyUpdates(current, data.updates, processBallUpdate));
+        setOriginalPlayers(current => applyUpdates(current, data.updates, processPlayerUpdate, playSound));
+        setOriginalPaddles(current => applyUpdates(current, data.updates, processPaddleUpdate, playSound));
+        setOriginalBalls(current => applyUpdates(current, data.updates, processBallUpdate, playSound));
 
-        // Handle grid updates separately using the new format
         const gridUpdate = data.updates.find(isFullGridUpdate);
         if (gridUpdate) {
-          setCellSize(gridUpdate.cellSize); // Update cell size
-          setBrickStates(gridUpdate.bricks); // Directly store the flat list
+          setCellSize(gridUpdate.cellSize);
+
+          const prevBricksMap = new Map(prevBrickStatesRef.current.map(b => [`${b.x.toFixed(2)},${b.y.toFixed(2)}`, b]));
+          gridUpdate.bricks.forEach(newBrick => {
+            const key = `${newBrick.x.toFixed(2)},${newBrick.y.toFixed(2)}`;
+            const prevBrick = prevBricksMap.get(key);
+            if (prevBrick && prevBrick.type !== 2 && newBrick.type !== 2 && newBrick.life < prevBrick.life) {
+              playSound('brick_break');
+            }
+          });
+
+          setBrickStates(gridUpdate.bricks);
+          prevBrickStatesRef.current = gridUpdate.bricks;
         }
       } else {
-        console.warn(`[${timestamp}][GameState] Received unknown message structure:`, data); // Keep warning
+        console.warn(`[${timestamp}][GameState] Received unknown message structure:`, data);
       }
     } catch (e) {
-      console.error('Failed to parse WebSocket message:', e); // Keep error
+      console.error('Failed to parse WebSocket message:', e);
     }
-  }, [lastMessage]); // Dependency is the last message
+  }, [lastMessage, playSound]);
 
   return {
     originalPlayers,
     originalPaddles,
     originalBalls,
-    brickStates, // Return flat list
-    cellSize, // Return cell size
+    brickStates,
+    cellSize,
     myPlayerIndex,
     gameOverInfo,
   };

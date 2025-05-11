@@ -1,7 +1,6 @@
-
 // File: src/App.tsx
-import { useCallback, useMemo, useState, useRef } from 'react';
-import styled, { DefaultTheme, ThemeProvider } from 'styled-components';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import styled, { DefaultTheme, ThemeProvider, keyframes } from 'styled-components';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import * as THREE from 'three';
 
@@ -14,72 +13,123 @@ import { useGameState } from './hooks/useGameState';
 import { usePlayerRotation } from './utils/rotation';
 import { useWindowSize } from './hooks/useWindowSize';
 import theme from './styles/theme';
+import { useSoundManager } from './hooks/useSoundManager';
+
+// --- Keyframes for Animations ---
+const logoShakeAnimation = keyframes`
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30%, 50%, 70%, 90% { transform: rotate(-2deg); }
+  20%, 40%, 60%, 80% { transform: rotate(2deg); }
+`;
 
 // --- Styled Components ---
 const AppContainer = styled.div<{ theme: DefaultTheme }>`
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%; /* Fill the #root element which has dynamic height */
+  height: 100%;
   overflow: hidden;
   background-color: ${({ theme }) => theme.colors.background};
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
 `;
+
 const Header = styled.header<{ theme: DefaultTheme }>`
   height: ${({ theme }) => theme.sizes.headerHeight};
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between; /* Keep space-between for sound toggle */
+  padding: 0 20px; /* Increased padding */
   z-index: 10;
   flex-shrink: 0;
+  position: relative; /* For absolute positioning of sound toggle if needed, or centering logo */
 `;
-const Logo = styled.img`
-  height: 30px;
-  margin-right: 10px;
+
+const LogoContainer = styled.div`
+  display: flex;
+  align-items: center;
+  /* Centering the logo container itself if it's the main middle element */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 `;
+
+const Logo = styled.img<{ animate: boolean }>`
+  height: 35px; /* Slightly larger logo */
+  margin-right: 12px;
+  animation: ${({ animate }) => (animate ? logoShakeAnimation : 'none')} 0.5s ease-in-out;
+`;
+
 const Title = styled.h1<{ theme: DefaultTheme }>`
   font-size: ${({ theme }) => theme.fonts.sizes.title};
-  font-weight: 500;
-  color: ${({ theme }) => theme.colors.textDim};
+  font-weight: 600; /* Bolder title */
+  color: ${({ theme }) => theme.colors.text}; /* Brighter title */
+  text-shadow: 0 0 5px ${({ theme }) => theme.colors.accentGlow};
 `;
+
+const SoundToggle = styled.button<{ theme: DefaultTheme }>`
+  background: none;
+  border: none;
+  color: ${({ theme }) => theme.colors.text};
+  font-size: 1.8em; /* Larger toggle */
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  margin-left: auto; /* Pushes to the right */
+
+  &:hover {
+    opacity: 1;
+  }
+`;
+
 const CanvasArea = styled.div<{ theme: DefaultTheme }>`
   position: relative;
   flex-grow: 1;
-  min-height: 0; /* Important for flex-grow to work correctly in a flex column */
+  min-height: 0;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: ${({ theme }) => theme.sizes.minScreenPadding};
   overflow: hidden;
 `;
+
 const ScoreBoard = styled.div<{ theme: DefaultTheme }>`
   position: absolute;
-  top: 15px;
-  left: 15px;
+  top: 20px; /* Increased spacing from top */
+  left: 20px; /* Increased spacing from left */
   z-index: 20;
   background: ${({ theme }) => theme.colors.scoreboardBackground};
-  padding: 10px 15px;
+  padding: 12px 18px; /* Increased padding */
   border-radius: ${({ theme }) => theme.sizes.borderRadius};
   border: 1px solid ${({ theme }) => theme.colors.scoreboardBorder};
   font-size: ${({ theme }) => theme.fonts.sizes.score};
   font-family: ${({ theme }) => theme.fonts.monospace};
   color: ${({ theme }) => theme.colors.text};
   box-shadow: ${({ theme }) => theme.shadows.scoreboard};
-  line-height: 1.4;
+  line-height: 1.5; /* Increased line height for readability */
+  font-weight: 500; /* Slightly bolder score text */
 
   div {
-    margin-bottom: 4px;
+    margin-bottom: 5px;
     &:last-child {
       margin-bottom: 0;
     }
   }
 `;
+
 const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.75);
+  background-color: rgba(0, 0, 0, 0.8); /* Darker overlay */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -87,15 +137,16 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   color: ${({ theme }) => theme.colors.text};
   z-index: 50;
   text-align: center;
-  h2 { font-size: 2.5em; margin-bottom: 20px; color: ${({ theme }) => theme.colors.accent}; }
-  p { font-size: 1.2em; margin-bottom: 15px; }
-  ul { list-style: none; padding: 0; margin-top: 10px; }
-  li { margin-bottom: 5px; }
+  h2 { font-size: 3em; margin-bottom: 25px; color: ${({ theme }) => theme.colors.accent}; }
+  p { font-size: 1.3em; margin-bottom: 18px; }
+  ul { list-style: none; padding: 0; margin-top: 12px; }
+  li { margin-bottom: 6px; font-size: 1.1em; }
 `;
+
 const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
   height: ${({ theme }) => theme.sizes.mobileControlsHeight};
   display: flex;
-  flex-shrink: 0; /* Prevent shrinking */
+  flex-shrink: 0;
   z-index: 30;
   user-select: none;
   -webkit-user-select: none;
@@ -135,9 +186,6 @@ const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
   }
 `;
 
-
-// --- App Component ---
-
 function AppContent() {
   const { width } = useWindowSize();
   const isMobileView = useMemo(() => width < 1024, [width]);
@@ -145,6 +193,9 @@ function AppContent() {
   const lastSentLogicalKeyboardDir = useRef<DirectionMessage['direction'] | null>(null);
   const [leftActive, setLeftActive] = useState(false);
   const [rightActive, setRightActive] = useState(false);
+  const [animateLogo, setAnimateLogo] = useState(false);
+
+  const { playSound, toggleMute, isMuted, isLoading: soundsLoading, error: soundError } = useSoundManager();
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
     shouldReconnect: () => true,
@@ -161,7 +212,7 @@ function AppContent() {
     cellSize,
     myPlayerIndex,
     gameOverInfo,
-  } = useGameState(lastMessage);
+  } = useGameState(lastMessage, playSound);
 
   const rotationDegrees = usePlayerRotation(myPlayerIndex);
   const rotationRadians = useMemo(() => THREE.MathUtils.degToRad(rotationDegrees), [rotationDegrees]);
@@ -188,6 +239,16 @@ function AppContent() {
     return connectionStatus;
   }, [connectionStatus, isGameReady, gameOverInfo]);
 
+  // Logo animation trigger
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setAnimateLogo(true);
+      setTimeout(() => setAnimateLogo(false), 500); // Duration of animation
+    }, 15000); // Trigger every 15 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   const sendLogicalDirectionMessage = useCallback(
     (logicalDir: DirectionMessage['direction'], source: 'kb' | 'mobile') => {
       if (!isGameActive) return;
@@ -201,7 +262,7 @@ function AppContent() {
       }
       sendMessage(JSON.stringify({ direction: logicalDir }));
     },
-    [isGameActive, sendMessage] // Removed myPlayerIndex as it's not directly used here
+    [isGameActive, sendMessage]
   );
 
   const mapDirection = useCallback((visualDir: VisualDirection): DirectionMessage['direction'] => {
@@ -209,9 +270,8 @@ function AppContent() {
     const needsSwap = myPlayerIndex === 0 || myPlayerIndex === 1;
     if (needsSwap) {
       return visualDir === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft';
-    } else {
-      return visualDir;
     }
+    return visualDir;
   }, [myPlayerIndex]);
 
   const handleKeyboardVisualChange = useCallback((visualDir: VisualDirection) => {
@@ -228,21 +288,21 @@ function AppContent() {
 
   const handleTouchStart = useCallback((visualDir: 'ArrowLeft' | 'ArrowRight') => (e: React.TouchEvent) => {
     e.preventDefault();
-    if (!isGameActive) return; // Check if game is active before processing touch
+    if (!isGameActive) return;
     if (visualDir === 'ArrowLeft') setLeftActive(true);
     if (visualDir === 'ArrowRight') setRightActive(true);
     const logicalDir = mapDirection(visualDir);
     sendLogicalDirectionMessage(logicalDir, 'mobile');
-  }, [mapDirection, sendLogicalDirectionMessage, isGameActive]); // Added isGameActive
+  }, [mapDirection, sendLogicalDirectionMessage, isGameActive]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
-    if (!isGameActive) return; // Check if game is active
+    if (!isGameActive) return;
     setLeftActive(false);
     setRightActive(false);
     const logicalDir = mapDirection('Stop');
     sendLogicalDirectionMessage(logicalDir, 'mobile');
-  }, [mapDirection, sendLogicalDirectionMessage, isGameActive]); // Added isGameActive
+  }, [mapDirection, sendLogicalDirectionMessage, isGameActive]);
 
   const renderGameOver = () => {
     if (!gameOverInfo) return null;
@@ -267,11 +327,27 @@ function AppContent() {
     );
   };
 
+  useEffect(() => {
+    if (soundsLoading) {
+      console.log('Sounds loading...');
+    } else if (soundError) {
+      console.error('Sound loading error:', soundError);
+    } else {
+      console.log('Sounds loaded successfully.');
+    }
+  }, [soundsLoading, soundError]);
+
+
   return (
     <AppContainer theme={theme}>
       <Header theme={theme}>
-        <Logo src="/bitmap.png" alt="PonGo Logo" />
-        <Title theme={theme}>PonGo</Title>
+        <LogoContainer>
+          <Logo src="/bitmap.png" alt="PonGo Logo" animate={animateLogo} />
+          <Title theme={theme}>PonGo</Title>
+        </LogoContainer>
+        <SoundToggle onClick={toggleMute} theme={theme} title={isMuted ? "Unmute" : "Mute"}>
+          {isMuted ? '🔇' : '🔊'}
+        </SoundToggle>
       </Header>
 
       <CanvasArea theme={theme}>
@@ -308,7 +384,7 @@ function AppContent() {
             isActive={leftActive}
             onTouchStart={handleTouchStart('ArrowLeft')}
             onTouchEnd={handleTouchEnd}
-            disabled={!isGameActive} // Disable button if game not active
+            disabled={!isGameActive}
           >
             ◀
           </ControlButton>
@@ -317,7 +393,7 @@ function AppContent() {
             isActive={rightActive}
             onTouchStart={handleTouchStart('ArrowRight')}
             onTouchEnd={handleTouchEnd}
-            disabled={!isGameActive} // Disable button if game not active
+            disabled={!isGameActive}
           >
             ▶
           </ControlButton>
@@ -330,8 +406,6 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider theme={theme}>
-      {/* GlobalStyle is applied once here, affecting the whole app including AppContent */}
-      {/* No need to pass theme to AppContainer if ThemeProvider is already wrapping it */}
       <AppContent />
     </ThemeProvider>
   );

@@ -1,7 +1,7 @@
 import React, { useMemo, Suspense, useEffect } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-// Removed PerspectiveCamera import from drei as we'll manage the default camera
 import * as THREE from 'three';
+import { Environment } from '@react-three/drei';
 
 import {
   Paddle as PaddleType, Ball as BallType, BrickStateUpdate,
@@ -40,9 +40,9 @@ const BoundaryWalls: React.FC<BoundaryWallsProps> = ({ extentX, extentY }) => {
           <meshStandardMaterial
             color={theme.colors.boundaryWall}
             emissive={theme.colors.boundaryWallEmissive}
-            emissiveIntensity={0.4}
-            roughness={0.8}
-            metalness={0.1}
+            emissiveIntensity={0}
+            roughness={0.85}
+            metalness={0.05}
           />
         </mesh>
       ))}
@@ -50,7 +50,6 @@ const BoundaryWalls: React.FC<BoundaryWallsProps> = ({ extentX, extentY }) => {
   );
 };
 
-// New CameraUpdater component
 const CameraUpdater: React.FC<{
   verticalFov: number;
   gameContentWidth: number;
@@ -68,40 +67,35 @@ const CameraUpdater: React.FC<{
   cameraXOffsetFactor,
   cameraYOffsetFactor,
 }) => {
-    const camera = useThree(state => state.camera); // Gets the default camera
-    const size = useThree(state => state.size); // Canvas dimensions { width, height, top, left }
+    const camera = useThree(state => state.camera);
+    const size = useThree(state => state.size);
 
     useEffect(() => {
-      // Ensure camera is a PerspectiveCamera and all necessary dimensions are available
       if (!(camera instanceof THREE.PerspectiveCamera) || !size.width || !size.height || !gameContentWidth || !gameContentHeight) {
         return;
       }
 
       const aspect = size.width / size.height;
-
-      // Update camera's FOV and aspect
       camera.fov = verticalFov;
       camera.aspect = aspect;
-      // camera.near and camera.far are set on <Canvas camera={{...}}> initially
 
       const vFOVrad = THREE.MathUtils.degToRad(verticalFov);
       const tanHalfVFov = Math.tan(vFOVrad / 2);
 
       const distToFitHeight = (gameContentHeight / 2) / tanHalfVFov;
-      // Handle aspect ratio of 0 to prevent division by zero if canvas is not ready
       const distToFitWidth = aspect > 0 ? (gameContentWidth / 2) / (tanHalfVFov * aspect) : distToFitHeight;
 
+      let targetDistance = Math.max(distToFitHeight, distToFitWidth);
+      targetDistance = Math.max(minCameraDistance, targetDistance * cameraPaddingFactor);
 
-      let newDistance = Math.max(distToFitHeight, distToFitWidth);
-      newDistance = Math.max(minCameraDistance, newDistance * cameraPaddingFactor);
-
-      const x = newDistance * cameraXOffsetFactor;
-      const y = newDistance * cameraYOffsetFactor;
-      const z = Math.sqrt(Math.max(0, newDistance ** 2 - x ** 2 - y ** 2));
+      const x = targetDistance * cameraXOffsetFactor;
+      const y = targetDistance * cameraYOffsetFactor;
+      const zSquared = targetDistance ** 2 - x ** 2 - y ** 2;
+      const z = Math.sqrt(Math.max(0.01, zSquared));
 
       camera.position.set(x, y, z);
       camera.lookAt(0, 0, 0);
-      camera.updateProjectionMatrix(); // Crucial after changing fov, aspect, or position
+      camera.updateProjectionMatrix();
 
     }, [
       camera,
@@ -139,78 +133,89 @@ const R3FCanvas: React.FC<R3FCanvasProps> = ({
   const canRenderGame = wsStatus === 'open' && brickStates.length > 0 && cellSize > 0;
 
   const boundaries = useMemo(() => {
-    if (!canRenderGame) return { extentX: 300, extentY: 300 }; // Default if not ready
-
+    if (!canRenderGame) return { extentX: 300, extentY: 300 };
     let maxX = 0;
     let maxY = 0;
     brickStates.forEach(b => {
       maxX = Math.max(maxX, Math.abs(b.x));
       maxY = Math.max(maxY, Math.abs(b.y));
     });
-
     const halfCell = cellSize / 2;
-    const extentX = maxX + halfCell;
-    const extentY = maxY + halfCell;
-    const paddleOverhang = 0;
     return {
-      extentX: extentX + paddleOverhang,
-      extentY: extentY + paddleOverhang
+      extentX: maxX + halfCell,
+      extentY: maxY + halfCell
     };
   }, [brickStates, cellSize, canRenderGame]);
 
-  // Memoize game content dimensions based on boundaries
   const gameContentWidth = useMemo(() => boundaries.extentX * 2, [boundaries.extentX]);
   const gameContentHeight = useMemo(() => boundaries.extentY * 2, [boundaries.extentY]);
 
-  // Camera configuration constants
-  const fishEyeFOV = 30; // Target vertical FOV
-  const minCameraDist = 150; // Minimum distance the camera can be
-  const camPaddingFactor = 1.1; // Padding factor for camera distance (e.g., 1.1 for 10% padding)
-  const camXOffsetFactor = 0.00; // Camera horizontal offset factor
-  const camYOffsetFactor = -0.33; // Camera vertical offset factor (negative for slight top-down view)
-
+  const fov = 60;
+  const minCamDist = Math.max(gameContentWidth, gameContentHeight) * 0.7;
+  const camPaddingFactor = 1.15;
+  const camXOffsetFactor = 0.0;
+  const camYOffsetFactor = -0.35;
 
   return (
     <Canvas
       shadows
-      gl={{ antialias: true, alpha: false }}
-      // Set initial camera properties. CameraUpdater will refine position, FOV, and aspect.
-      // Provide a generous far plane initially.
-      camera={{ fov: fishEyeFOV, near: 10, far: Math.max(gameContentWidth, gameContentHeight) * 5 + minCameraDist }}
+      gl={{
+        antialias: true,
+        alpha: false,
+        outputColorSpace: THREE.SRGBColorSpace,
+        toneMapping: THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 0.9,
+      }}
+      camera={{
+        fov: fov,
+        near: 0.1,
+        far: Math.max(gameContentWidth, gameContentHeight) * 10 + minCamDist,
+        position: [0, minCamDist * camYOffsetFactor, minCamDist * 0.8]
+      }}
     >
       <color attach="background" args={[theme.colors.background]} />
 
       <CameraUpdater
-        verticalFov={fishEyeFOV}
+        verticalFov={fov}
         gameContentWidth={gameContentWidth}
         gameContentHeight={gameContentHeight}
-        minCameraDistance={minCameraDist}
+        minCameraDistance={minCamDist}
         cameraPaddingFactor={camPaddingFactor}
         cameraXOffsetFactor={camXOffsetFactor}
         cameraYOffsetFactor={camYOffsetFactor}
       />
 
-      <ambientLight intensity={0.6} />
-      <directionalLight
-        // Position light somewhat dynamically or ensure it's far enough
-        position={[gameContentWidth * 0.1, gameContentHeight * 0.1, Math.max(gameContentWidth, gameContentHeight) * 0.5 + 100]}
-        intensity={1.0}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-camera-left={-boundaries.extentX * 1.5}
-        shadow-camera-right={boundaries.extentX * 1.5}
-        shadow-camera-top={boundaries.extentY * 1.5}
-        shadow-camera-bottom={-boundaries.extentY * 1.5}
-        shadow-camera-near={minCameraDist * 0.1} // Adjust near/far based on typical distances
-        shadow-camera-far={Math.max(gameContentWidth, gameContentHeight) * 3 + minCameraDist} // Generous far for shadows
-      />
-      <pointLight
-        position={[0, 0, Math.max(gameContentWidth, gameContentHeight) * 0.3 + 50]}
-        intensity={0.4}
-      />
+      <Suspense fallback={null}>
+        {/* Using a very simple environment or none at all for flat design */}
+        {/* <Environment preset="city" background={false} blur={0.8} /> */}
+        {/* Or, for an even flatter look, rely solely on direct lights: */}
+        <Environment files={null} background={false} blur={0} />
+      </Suspense>
 
-      {canRenderGame && ( // Check canRenderGame before accessing boundaries for walls
+      <ambientLight intensity={0.8} color="#ffffff" /> {/* Increased ambient for flatter look */}
+      <hemisphereLight
+        color={new THREE.Color(theme.colors.accent).multiplyScalar(0.05)} // Very subtle cool top
+        groundColor={new THREE.Color(theme.colors.accent).multiplyScalar(0.02)} // Very subtle warm bottom
+        intensity={0.5} // Reduced intensity as ambient is stronger
+      />
+      <directionalLight
+        position={[gameContentWidth * 0.2, gameContentHeight * 0.5, Math.max(gameContentWidth, gameContentHeight) * 1.0]} // Adjusted position
+        intensity={0.8} // Reduced intensity
+        castShadow
+        shadow-mapSize-width={1024} // Reduced shadow map size for performance
+        shadow-mapSize-height={1024}
+        shadow-camera-left={-boundaries.extentX * 2.0} // Tighter shadow frustum
+        shadow-camera-right={boundaries.extentX * 2.0}
+        shadow-camera-top={boundaries.extentY * 2.0}
+        shadow-camera-bottom={-boundaries.extentY * 2.0}
+        shadow-camera-near={50} // Adjusted near/far
+        shadow-camera-far={Math.max(gameContentWidth, gameContentHeight) * 3}
+        shadow-bias={-0.0005} // Adjusted bias
+        shadow-normalBias={0.03}
+      />
+      {/* Removed second directional light to simplify and flatten lighting */}
+
+      {canRenderGame && (
         <Suspense fallback={null}>
           <BoundaryWalls extentX={boundaries.extentX} extentY={boundaries.extentY} />
           <group rotation={[0, 0, rotationAngle]}>
@@ -230,7 +235,7 @@ const R3FCanvas: React.FC<R3FCanvasProps> = ({
                 <Paddle3D
                   key={`paddle-${paddle.index}`}
                   data={paddle}
-                  position={[paddle.r3fX, paddle.r3fY, theme.sizes.boundaryWallDepth / 2 + 1]}
+                  position={[paddle.r3fX, paddle.r3fY, (paddle.index === 0 || paddle.index === 2 ? paddle.width : paddle.height) / 2 + 0.1]}
                 />
               ) : null
             )}
@@ -239,7 +244,7 @@ const R3FCanvas: React.FC<R3FCanvasProps> = ({
                 <Ball3D
                   key={`ball-${ball.id}`}
                   data={ball}
-                  position={[ball.r3fX, ball.r3fY, theme.sizes.boundaryWallDepth / 2 + ball.radius + 1]}
+                  position={[ball.r3fX, ball.r3fY, ball.radius + 0.1]}
                 />
               ) : null
             )}
