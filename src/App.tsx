@@ -15,6 +15,13 @@ import { useWindowSize } from './hooks/useWindowSize';
 import theme from './styles/theme';
 import { useSoundManager } from './hooks/useSoundManager';
 
+// Import SVG Icons
+import VolumeHighIcon from './components/icons/VolumeHighIcon';
+import VolumeMediumIcon from './components/icons/VolumeMediumIcon';
+import VolumeLowIcon from './components/icons/VolumeLowIcon';
+import VolumeMuteIcon from './components/icons/VolumeMuteIcon';
+
+
 // --- Keyframes for Animations ---
 const logoShakeAnimation = keyframes`
   0%, 100% { transform: rotate(0deg); }
@@ -40,53 +47,109 @@ const Header = styled.header<{ theme: DefaultTheme }>`
   height: ${({ theme }) => theme.sizes.headerHeight};
   display: flex;
   align-items: center;
-  justify-content: space-between; /* Keep space-between for sound toggle */
-  padding: 0 20px; /* Increased padding */
+  justify-content: space-between;
+  padding: 0 15px; /* Reduced padding slightly for mobile */
   z-index: 10;
   flex-shrink: 0;
-  position: relative; /* For absolute positioning of sound toggle if needed, or centering logo */
+  position: relative;
 `;
 
 const LogoContainer = styled.div`
   display: flex;
   align-items: center;
-  /* Centering the logo container itself if it's the main middle element */
+  /* For centering, ensure it doesn't get pushed by flex items if header is crowded */
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  /* Ensure it doesn't prevent interaction with elements underneath if it's too wide */
+  pointer-events: none; 
+  & > * {
+    pointer-events: auto; /* Allow interaction with logo/title itself */
+  }
 `;
 
 const Logo = styled.img<{ animate: boolean }>`
-  height: 35px; /* Slightly larger logo */
-  margin-right: 12px;
+  height: 30px; /* Slightly smaller for mobile friendliness */
+  margin-right: 10px;
   animation: ${({ animate }) => (animate ? logoShakeAnimation : 'none')} 0.5s ease-in-out;
 `;
 
 const Title = styled.h1<{ theme: DefaultTheme }>`
-  font-size: ${({ theme }) => theme.fonts.sizes.title};
-  font-weight: 600; /* Bolder title */
-  color: ${({ theme }) => theme.colors.text}; /* Brighter title */
+  font-size: ${({ theme }) => theme.fonts.sizes.titleMobile}; /* Responsive font size */
+  @media (min-width: 768px) {
+    font-size: ${({ theme }) => theme.fonts.sizes.title};
+  }
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.text};
   text-shadow: 0 0 5px ${({ theme }) => theme.colors.accentGlow};
 `;
 
-const SoundToggle = styled.button<{ theme: DefaultTheme }>`
-  background: none;
-  border: none;
-  color: ${({ theme }) => theme.colors.text};
-  font-size: 1.8em; /* Larger toggle */
-  cursor: pointer;
-  padding: 8px;
+const VolumeControlContainer = styled.div`
   display: flex;
   align-items: center;
+  margin-left: auto; /* Pushes to the right */
+`;
+
+const VolumeIconContainer = styled.div<{ theme: DefaultTheme }>`
+  display: flex; /* For centering the SVG if needed */
+  align-items: center;
   justify-content: center;
+  color: ${({ theme }) => theme.colors.text};
+  margin-right: 8px;
+  cursor: pointer;
   opacity: 0.8;
   transition: opacity 0.2s;
-  margin-left: auto; /* Pushes to the right */
+  user-select: none;
+  padding: 5px; /* Add some padding for easier clicking */
 
   &:hover {
     opacity: 1;
   }
 `;
+
+const VolumeSliderInput = styled.input.attrs({ type: 'range' }) <{ theme: DefaultTheme }>`
+  width: 80px; /* Slightly smaller slider for mobile */
+  @media (min-width: 768px) {
+    width: 100px;
+  }
+  height: 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: ${({ theme }) => theme.colors.volumeSliderTrack};
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: ${({ theme }) => theme.colors.volumeSliderThumb};
+    border-radius: 50%;
+    border: 2px solid ${({ theme }) => theme.colors.volumeSliderThumbBorder};
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  &::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: ${({ theme }) => theme.colors.volumeSliderThumb};
+    border-radius: 50%;
+    border: 2px solid ${({ theme }) => theme.colors.volumeSliderThumbBorder};
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  &:hover::-webkit-slider-thumb {
+    background: ${({ theme }) => theme.colors.volumeSliderThumbHover};
+  }
+  &:hover::-moz-range-thumb {
+    background: ${({ theme }) => theme.colors.volumeSliderThumbHover};
+  }
+`;
+
 
 const CanvasArea = styled.div<{ theme: DefaultTheme }>`
   position: relative;
@@ -100,21 +163,31 @@ const CanvasArea = styled.div<{ theme: DefaultTheme }>`
 `;
 
 const ScoreBoard = styled.div<{ theme: DefaultTheme }>`
-  position: absolute;
-  top: 20px; /* Increased spacing from top */
-  left: 20px; /* Increased spacing from left */
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  padding: 8px;
+  opacity: 0.4;
   z-index: 20;
   background: ${({ theme }) => theme.colors.scoreboardBackground};
-  padding: 12px 18px; /* Increased padding */
   border-radius: ${({ theme }) => theme.sizes.borderRadius};
   border: 1px solid ${({ theme }) => theme.colors.scoreboardBorder};
-  font-size: ${({ theme }) => theme.fonts.sizes.score};
+  font-size: ${({ theme }) => theme.fonts.sizes.mobileScore};
   font-family: ${({ theme }) => theme.fonts.monospace};
   color: ${({ theme }) => theme.colors.text};
   box-shadow: ${({ theme }) => theme.shadows.scoreboard};
-  line-height: 1.5; /* Increased line height for readability */
-  font-weight: 500; /* Slightly bolder score text */
+  line-height: 1.5;
+  font-weight: 500;
 
+  @media (min-width: 768px) {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    padding: 12px 18px;
+    opacity: 1;
+    font-size: ${({ theme }) => theme.fonts.sizes.score};
+  }
+  
   div {
     margin-bottom: 5px;
     &:last-child {
@@ -129,7 +202,7 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.8); /* Darker overlay */
+  background-color: rgba(0, 0, 0, 0.8);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -188,14 +261,15 @@ const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
 
 function AppContent() {
   const { width } = useWindowSize();
-  const isMobileView = useMemo(() => width < 1024, [width]);
+  const isMobileView = useMemo(() => width < 768, [width]); // Adjusted breakpoint for slider visibility
   const lastSentMobileLogicalDir = useRef<DirectionMessage['direction'] | null>(null);
   const lastSentLogicalKeyboardDir = useRef<DirectionMessage['direction'] | null>(null);
   const [leftActive, setLeftActive] = useState(false);
   const [rightActive, setRightActive] = useState(false);
   const [animateLogo, setAnimateLogo] = useState(false);
 
-  const { playSound, toggleMute, isMuted, isLoading: soundsLoading, error: soundError } = useSoundManager();
+  const { playSound, volume, setVolume, isLoading: soundsLoading, error: soundError, resumeContext } = useSoundManager();
+  const previousVolumeRef = useRef(volume);
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
     shouldReconnect: () => true,
@@ -239,20 +313,17 @@ function AppContent() {
     return connectionStatus;
   }, [connectionStatus, isGameReady, gameOverInfo]);
 
-  // Logo animation trigger
   useEffect(() => {
     const intervalId = setInterval(() => {
       setAnimateLogo(true);
-      setTimeout(() => setAnimateLogo(false), 500); // Duration of animation
-    }, 15000); // Trigger every 15 seconds
-
+      setTimeout(() => setAnimateLogo(false), 500);
+    }, 15000);
     return () => clearInterval(intervalId);
   }, []);
 
   const sendLogicalDirectionMessage = useCallback(
     (logicalDir: DirectionMessage['direction'], source: 'kb' | 'mobile') => {
       if (!isGameActive) return;
-
       if (source === 'kb') {
         if (logicalDir === lastSentLogicalKeyboardDir.current) return;
         lastSentLogicalKeyboardDir.current = logicalDir;
@@ -288,12 +359,13 @@ function AppContent() {
 
   const handleTouchStart = useCallback((visualDir: 'ArrowLeft' | 'ArrowRight') => (e: React.TouchEvent) => {
     e.preventDefault();
+    resumeContext();
     if (!isGameActive) return;
     if (visualDir === 'ArrowLeft') setLeftActive(true);
     if (visualDir === 'ArrowRight') setRightActive(true);
     const logicalDir = mapDirection(visualDir);
     sendLogicalDirectionMessage(logicalDir, 'mobile');
-  }, [mapDirection, sendLogicalDirectionMessage, isGameActive]);
+  }, [mapDirection, sendLogicalDirectionMessage, isGameActive, resumeContext]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
@@ -337,17 +409,54 @@ function AppContent() {
     }
   }, [soundsLoading, soundError]);
 
+  const handleVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(event.target.value);
+    setVolume(newVolume);
+  };
+
+  const handleIconClick = () => {
+    resumeContext();
+    if (volume > 0) {
+      previousVolumeRef.current = volume;
+      setVolume(0);
+    } else {
+      setVolume(previousVolumeRef.current > 0 ? previousVolumeRef.current : 0.5);
+    }
+  };
+
+  const renderVolumeIcon = () => {
+    const iconSize = 22; // SVG icon size
+    const iconColor = theme.colors.text;
+    if (volume === 0) return <VolumeMuteIcon size={iconSize} color={iconColor} />;
+    if (volume < 0.33) return <VolumeLowIcon size={iconSize} color={iconColor} />;
+    if (volume < 0.66) return <VolumeMediumIcon size={iconSize} color={iconColor} />;
+    return <VolumeHighIcon size={iconSize} color={iconColor} />;
+  };
 
   return (
     <AppContainer theme={theme}>
       <Header theme={theme}>
+        <div style={{ width: isMobileView ? '30px' : '130px', flexShrink: 0 }} />
         <LogoContainer>
           <Logo src="/bitmap.png" alt="PonGo Logo" animate={animateLogo} />
           <Title theme={theme}>PonGo</Title>
         </LogoContainer>
-        <SoundToggle onClick={toggleMute} theme={theme} title={isMuted ? "Unmute" : "Mute"}>
-          {isMuted ? '🔇' : '🔊'}
-        </SoundToggle>
+        <VolumeControlContainer>
+          <VolumeIconContainer onClick={handleIconClick} theme={theme} title={volume === 0 ? "Unmute" : "Mute"}>
+            {renderVolumeIcon()}
+          </VolumeIconContainer>
+          {!isMobileView && (
+            <VolumeSliderInput
+              theme={theme}
+              min="0"
+              max="1"
+              step="0.01"
+              value={volume}
+              onChange={handleVolumeChange}
+              title={`Volume: ${Math.round(volume * 100)}%`}
+            />
+          )}
+        </VolumeControlContainer>
       </Header>
 
       <CanvasArea theme={theme}>

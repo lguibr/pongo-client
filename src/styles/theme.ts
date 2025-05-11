@@ -3,11 +3,11 @@
 
 const theme = {
   colors: {
-    background: '#121212', // Slightly darker background
-    text: '#E0E0E0', // Slightly softer white
+    background: '#121212',
+    text: '#E0E0E0',
     textDim: '#BDBDBD',
-    accent: '#7E85FF', // Slightly desaturated accent
-    accentGlow: '#7E85FF', // Same as accent, no glow
+    accent: '#7E85FF',
+    accentGlow: '#7E85FF',
     brickSheenAccent: '#9FA6FF',
     connectionStatus: {
       connecting: '#FBBC05',
@@ -15,28 +15,28 @@ const theme = {
       closed: '#EA4335',
       error: '#DB4437',
     },
-    player0: '#4285F4', // Google Blue
-    player1: '#34A853', // Google Green
-    player2: '#FBBC05', // Google Yellow
-    player3: '#EA4335', // Google Red
-    unownedBall: '#BDBDBD', // Lighter grey for unowned balls
-    ballTrail: 'rgba(200, 200, 220, 0.5)', // More neutral trail
-    brickLife: [ // Standard Material Design-like colors
-      '#2196F3', // Blue
-      '#4CAF50', // Green
-      '#FFC107', // Amber
-      '#E91E63', // Pink
-      '#FF5722', // Deep Orange
-      '#F44336', // Red
+    player0: '#4285F4',
+    player1: '#34A853',
+    player2: '#FBBC05',
+    player3: '#EA4335',
+    unownedBall: '#BDBDBD',
+    ballTrail: 'rgba(200, 200, 220, 0.5)',
+    brickLife: [
+      '#2196F3',
+      '#4CAF50',
+      '#FFC107',
+      '#E91E63',
+      '#FF5722',
+      '#F44336',
     ],
-    brickBorder: '#424242', // Darker border
-    brickShadow: 'rgba(0, 0, 0, 0.2)', // Softer shadow for flat design
+    brickBorder: '#424242',
+    brickShadow: 'rgba(0, 0, 0, 0.2)',
     brickLifeText: '#FFFFFF',
     scoreboardBackground: 'rgba(40, 40, 40, 0.9)',
     scoreboardBorder: 'rgba(100, 100, 150, 0.2)',
     statusMessageBackground: 'rgba(20, 20, 20, 0.85)',
-    boundaryWall: '#28282D', // Darker walls
-    boundaryWallEmissive: '#28282D', // No emissive for walls
+    boundaryWall: '#28282D',
+    boundaryWallEmissive: '#28282D',
     mobileButtonBackground: 'rgba(60, 60, 65, 0.85)',
     mobileButtonBackgroundActive: 'rgba(80, 80, 85, 0.95)',
     mobileButtonBorder: 'rgba(120, 120, 170, 0.25)',
@@ -48,6 +48,10 @@ const theme = {
     statusOverlayClosed: '#EA4335',
     statusOverlayError: '#DB4437',
     defaultParticle: '#BDBDBD',
+    volumeSliderTrack: '#555',
+    volumeSliderThumb: '#E0E0E0',
+    volumeSliderThumbBorder: '#333',
+    volumeSliderThumbHover: '#FFFFFF',
   },
   fonts: {
     primary:
@@ -55,24 +59,26 @@ const theme = {
     monospace: "'Consolas', 'Menlo', 'Courier New', Courier, monospace",
     sizes: {
       title: '1.8em',
+      titleMobile: '1.5em', // Added for smaller screens
       status: '1.8em',
-      score: '1.2em',
+      score: '1.4em',
       default: '1em',
       mobileButtonSymbol: '2.5em',
+      mobileScore: '0.8em',
     },
   },
   sizes: {
-    headerHeight: '60px',
-    minScreenPadding: '.5rem',
-    borderRadius: '4px',
-    brickBorderRadius: '10px', // Kept for RoundedBox, but effect will be subtle
-    boundaryWallThickness: 8,
-    boundaryWallDepth: 10, // This is visual depth along Z for walls
-    mobileControlsHeight: '55px',
-    brickDepthPerLifeUnit: 0.1, // Each point of life adds this * cellSize to depth
+    headerHeight: '96px',
+    minScreenPadding: '.25rem',
+    borderRadius: '8px',
+    brickBorderRadius: '12px',
+    boundaryWallThickness: 10,
+    boundaryWallDepth: 16,
+    mobileControlsHeight: '80px',
+    brickDepthPerLifeUnit: 0.16,
   },
   shadows: {
-    canvas: '0 0 10px rgba(0, 0, 0, 0.2)', // Softer shadow
+    canvas: '0 0 10px rgba(0, 0, 0, 0.2)',
     brick: '1px 1px 3px rgba(0, 0, 0, 0.3)',
     scoreboard: '0 2px 8px rgba(0, 0, 0, 0.4)',
     statusOverlay: '0 2px 10px rgba(0, 0, 0, 0.4)',

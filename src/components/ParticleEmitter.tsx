@@ -1,233 +1,199 @@
 // File: src/components/ParticleEmitter.tsx
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import theme from '../styles/theme'; // Import theme for player colors
 
 interface ParticleData {
   id: number;
   position: THREE.Vector3;
   velocity: THREE.Vector3;
-  life: number; // Remaining duration in ms
+  life: number;
   maxLife: number;
   scale: number;
   color: THREE.Color;
+  active: boolean;
 }
 
-interface ParticleEmitterProps {
-  type: 'spark' | 'brickExplosion';
+export interface ParticleEmitterProps {
+  emitterId: string | number; // Key to re-trigger emission
+  type?: 'spark' | 'brickExplosion'; // Type can be optional if color is always provided
   count: number;
-  origin: { x: number; y: number; z: number }; // Center of emission relative to parent group
-  color?: string; // Base color for brick explosion, ignored for spark
-  duration: number; // ms for particle lifetime
-  particleSize?: number; // Base size
+  origin?: THREE.Vector3; // Center of emission, defaults to (0,0,0) relative to parent
+  baseColor: THREE.Color; // Now mandatory
+  duration?: number; // ms for particle lifetime
+  particleSize?: number;
   force?: number;
-  spread?: number; // Angle in radians (primarily for brick explosion Z variation)
-  decay?: number; // Velocity decay factor per frame (e.g., 0.95)
-  gravity?: number; // Simple Z-axis force
-  shape?: 'point' | 'sphere' | 'box'; // Emission shape relative to origin
-  shapeRadius?: number; // For sphere shape
-  shapeDimensions?: [number, number, number]; // For box shape
+  spread?: number; // Angle in radians for initial velocity cone
+  decay?: number;
+  gravity?: number;
+  emissionShape?: 'point' | 'sphereSurface' | 'boxSurface';
+  shapeRadius?: number; // For sphereSurface
+  shapeDimensions?: THREE.Vector3; // For boxSurface [width, height, depth]
+  onComplete?: () => void; // Callback when all particles are dead
 }
 
-const PARTICLE_GEOMETRY_SPARK = new THREE.SphereGeometry(1, 4, 4);
-const PARTICLE_GEOMETRY_BRICK = new THREE.BoxGeometry(1, 1, 1);
-
-const PLAYER_COLORS = [
-  theme.colors.player0,
-  theme.colors.player1,
-  theme.colors.player2,
-  theme.colors.player3,
-];
-
-// Helper to get a random point on the surface of a box
-function getRandomPointOnBoxSurface(dims: [number, number, number]): THREE.Vector3 {
-  const halfDims = dims.map(d => d / 2);
-  const face = Math.floor(Math.random() * 6);
-  const point = new THREE.Vector3();
-
-  switch (face) {
-    case 0: point.set(halfDims[0], Math.random() * dims[1] - halfDims[1], Math.random() * dims[2] - halfDims[2]); break; // +X
-    case 1: point.set(-halfDims[0], Math.random() * dims[1] - halfDims[1], Math.random() * dims[2] - halfDims[2]); break; // -X
-    case 2: point.set(Math.random() * dims[0] - halfDims[0], halfDims[1], Math.random() * dims[2] - halfDims[2]); break; // +Y
-    case 3: point.set(Math.random() * dims[0] - halfDims[0], -halfDims[1], Math.random() * dims[2] - halfDims[2]); break; // -Y
-    case 4: point.set(Math.random() * dims[0] - halfDims[0], Math.random() * dims[1] - halfDims[1], halfDims[2]); break; // +Z
-    case 5: point.set(Math.random() * dims[0] - halfDims[0], Math.random() * dims[1] - halfDims[1], -halfDims[2]); break; // -Z
-  }
-  return point;
-}
-
+const PARTICLE_GEOMETRY = new THREE.SphereGeometry(1, 4, 4); // Simple geometry for all particles
 
 const ParticleEmitter: React.FC<ParticleEmitterProps> = ({
-  type,
+  emitterId,
   count,
-  origin,
-  color, // Used only for brickExplosion
-  duration,
-  particleSize = 1.2,
-  force = 5,
-  spread = Math.PI / 4,
-  decay = 0.95,
-  gravity = type === 'spark' ? -15 : -9.8, // Increased default gravity for sparks
-  shape = 'point',
+  origin = new THREE.Vector3(0, 0, 0),
+  baseColor,
+  duration = 1000,
+  particleSize = 0.8,
+  force = 8,
+  spread = Math.PI, // Wider spread for sparks
+  decay = 0.96,
+  gravity = -10,
+  emissionShape = 'point',
   shapeRadius = 1,
-  shapeDimensions = [1, 1, 1],
+  shapeDimensions = new THREE.Vector3(1, 1, 1),
+  onComplete,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const particles = useRef<ParticleData[]>([]);
   const dummy = useMemo(() => new THREE.Object3D(), []);
-  const emitterId = useMemo(() => `${type}-${Date.now().toString().slice(-5)}`, [type]);
+  const [isActive, setIsActive] = useState(true);
 
-  const particleGeometry = type === 'brickExplosion' ? PARTICLE_GEOMETRY_BRICK : PARTICLE_GEOMETRY_SPARK;
-  const baseColor = useMemo(() => new THREE.Color(color ?? theme.colors.defaultParticle), [color]);
+  const particleMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false, // Particles usually don't write to depth buffer
+    roughness: 0.7,
+    metalness: 0.1,
+    emissiveIntensity: 0.2, // Slight self-glow for visibility
+    envMapIntensity: 0.1,
+  }), []);
 
-  // Initialize particles
+
   useEffect(() => {
+    setIsActive(true);
     particles.current = [];
-    const originVec = new THREE.Vector3(origin.x, origin.y, origin.z);
 
     for (let i = 0; i < count; i++) {
-      const initialPos = originVec.clone();
-      let direction = new THREE.Vector3();
+      const initialPos = new THREE.Vector3();
+      const direction = new THREE.Vector3();
 
-      // --- Calculate Initial Position & Direction based on Shape ---
-      if (type === 'spark') {
-        if (shape === 'sphere' && shapeRadius > 0) {
-          direction.set(
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2
-          ).normalize();
-          initialPos.addScaledVector(direction, shapeRadius);
-        } else if (shape === 'box' && shapeDimensions) {
-          const surfacePoint = getRandomPointOnBoxSurface(shapeDimensions);
-          initialPos.add(surfacePoint);
-          direction = surfacePoint.normalize();
-        } else {
-          direction.set(
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2
-          ).normalize();
+      if (emissionShape === 'sphereSurface' && shapeRadius > 0) {
+        direction.randomDirection(); // Random point on unit sphere surface
+        initialPos.copy(direction).multiplyScalar(shapeRadius); // Scale to shapeRadius
+      } else if (emissionShape === 'boxSurface' && shapeDimensions) {
+        // Get a random point on the surface of the box
+        const face = Math.floor(Math.random() * 6);
+        const u = Math.random() - 0.5; // -0.5 to 0.5
+        const v = Math.random() - 0.5; // -0.5 to 0.5
+        const halfDims = shapeDimensions.clone().multiplyScalar(0.5);
+
+        switch (face) {
+          case 0: initialPos.set(halfDims.x, u * shapeDimensions.y, v * shapeDimensions.z); break; // +X
+          case 1: initialPos.set(-halfDims.x, u * shapeDimensions.y, v * shapeDimensions.z); break; // -X
+          case 2: initialPos.set(u * shapeDimensions.x, halfDims.y, v * shapeDimensions.z); break; // +Y
+          case 3: initialPos.set(u * shapeDimensions.x, -halfDims.y, v * shapeDimensions.z); break; // -Y
+          case 4: initialPos.set(u * shapeDimensions.x, v * shapeDimensions.y, halfDims.z); break; // +Z
+          case 5: initialPos.set(u * shapeDimensions.x, v * shapeDimensions.y, -halfDims.z); break; // -Z
         }
-      } else { // brickExplosion
-        if (shape === 'box' && shapeDimensions) {
-          initialPos.add(
-            new THREE.Vector3(
-              (Math.random() - 0.5) * shapeDimensions[0] * 0.8,
-              (Math.random() - 0.5) * shapeDimensions[1] * 0.8,
-              (Math.random() - 0.5) * shapeDimensions[2] * 0.8
-            )
-          );
-        }
-        const horizontalAngle = Math.random() * Math.PI * 2;
-        const zAngleVariation = (Math.random() - 0.5) * spread;
+        direction.copy(initialPos).normalize(); // Emit outwards from surface point
+      } else { // Point emission (default)
         direction.set(
-          Math.cos(horizontalAngle),
-          Math.sin(horizontalAngle),
-          Math.sin(zAngleVariation)
+          (Math.random() - 0.5) * 2,
+          (Math.random() - 0.5) * 2,
+          (Math.random() - 0.5) * 2
         ).normalize();
+        // Apply spread for point emission
+        const angle = spread / 2;
+        direction.applyAxisAngle(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize(), (Math.random() - 0.5) * angle);
       }
 
-      const speed = force * (Math.random() * 0.5 + 0.75);
+      initialPos.add(origin); // Add local origin offset
+
+      const speed = force * (0.75 + Math.random() * 0.5);
       const velocity = direction.multiplyScalar(speed);
 
-      // --- Particle Color ---
-      let particleColor: THREE.Color;
-      if (type === 'spark') {
-        // ALWAYS pick one of the 4 player colors randomly for sparks
-        particleColor = new THREE.Color(PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)]);
-      } else {
-        particleColor = baseColor.clone();
-        particleColor.offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
-      }
+      const particleColor = baseColor.clone();
+      // Optional: Add slight color variation
+      particleColor.offsetHSL(0, (Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1);
+
 
       particles.current.push({
         id: i,
         position: initialPos,
         velocity: velocity,
-        life: duration * (Math.random() * 0.4 + 0.8),
+        life: duration * (0.7 + Math.random() * 0.6),
         maxLife: duration,
-        scale: particleSize * (Math.random() * 0.5 + 0.75),
+        scale: particleSize * (0.6 + Math.random() * 0.8),
         color: particleColor,
+        active: true,
       });
     }
 
     if (meshRef.current) {
+      meshRef.current.count = count; // Ensure all instances are potentially renderable
       meshRef.current.instanceMatrix.needsUpdate = true;
       if (meshRef.current.instanceColor) {
         meshRef.current.instanceColor.needsUpdate = true;
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count, emitterId]);
+  }, [emitterId, count, origin, baseColor, duration, particleSize, force, spread, emissionShape, shapeRadius, shapeDimensions]);
 
   useFrame((_, delta) => {
-    if (!meshRef.current || particles.current.length === 0) return;
+    if (!meshRef.current || !isActive) return;
 
-    const dt = delta * 1000;
+    const dt = Math.min(delta, 0.05); // Cap delta
     let aliveCount = 0;
 
-    particles.current.forEach((p, i) => {
-      p.life -= dt;
-
-      if (p.life <= 0) {
+    particles.current.forEach((p) => {
+      if (!p.active) {
         dummy.scale.set(0, 0, 0);
-        dummy.updateMatrix();
-        meshRef.current.setMatrixAt(i, dummy.matrix);
       } else {
-        aliveCount++;
-        p.velocity.z += (gravity * delta); // Apply gravity
-        p.position.addScaledVector(p.velocity, delta);
-        p.velocity.multiplyScalar(Math.pow(decay, delta * 60)); // Apply decay
+        p.life -= dt * 1000;
+        if (p.life <= 0) {
+          p.active = false;
+          dummy.scale.set(0, 0, 0);
+        } else {
+          aliveCount++;
+          p.velocity.z += gravity * dt;
+          p.position.addScaledVector(p.velocity, dt);
+          p.velocity.multiplyScalar(Math.pow(decay, dt * 60));
 
-        dummy.position.copy(p.position);
-        const lifeRatio = Math.max(0, p.life / p.maxLife);
-        // Make scale fade more noticeably towards the end
-        const scaleMultiplier = Math.pow(lifeRatio, 1.5); // Faster fade than linear
-        const currentScale = p.scale * scaleMultiplier;
-        dummy.scale.set(Math.max(1e-5, currentScale), Math.max(1e-5, currentScale), Math.max(1e-5, currentScale));
-        dummy.updateMatrix();
+          dummy.position.copy(p.position);
+          const lifeRatio = Math.max(0, p.life / p.maxLife);
+          const currentScale = p.scale * Math.pow(lifeRatio, 1.5); // Scale fades out
+          dummy.scale.setScalar(Math.max(1e-5, currentScale));
 
-        meshRef.current.setMatrixAt(i, dummy.matrix);
-        if (meshRef.current.instanceColor) {
-          meshRef.current.setColorAt(i, p.color);
+          if (meshRef.current.instanceColor) {
+            // Fade color alpha if material supports it (MeshBasicMaterial does, MeshStandardMaterial needs transparent=true)
+            const tempColor = p.color.clone();
+            // For MeshStandardMaterial, opacity is on the material itself.
+            // This setColorAt won't directly control opacity unless the shader is custom.
+            // We rely on scaling to zero for disappearance.
+            meshRef.current.setColorAt(p.id, tempColor);
+          }
         }
       }
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(p.id, dummy.matrix);
     });
 
-    meshRef.current.count = aliveCount;
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) {
       meshRef.current.instanceColor.needsUpdate = true;
     }
+
+    if (aliveCount === 0) {
+      setIsActive(false);
+      if (onComplete) onComplete();
+    }
   });
 
-  if (count === 0) return null;
+  if (!isActive || count === 0) return null;
 
   return (
-    <group position={[origin.x, origin.y, origin.z]}>
-      <instancedMesh
-        ref={meshRef}
-        args={[particleGeometry, undefined, count]}
-        castShadow={false}
-        receiveShadow={false}
-      >
-        <meshStandardMaterial
-          toneMapped={false}
-          vertexColors
-          transparent={false} // Start opaque
-          opacity={1.0}      // Start opaque
-          depthWrite={true} // Write depth initially
-          // Note: Fading opacity requires changing transparent/depthWrite dynamically
-          // or using a custom shader. We rely on scale fadeout for simplicity.
-          roughness={type === 'spark' ? 0.8 : 0.6}
-          metalness={type === 'spark' ? 0.1 : 0.2}
-          emissive={type === 'spark' ? '#ffffff' : '#000000'}
-          emissiveIntensity={type === 'spark' ? 0.4 : 0}
-        />
-      </instancedMesh>
-    </group>
+    <instancedMesh
+      ref={meshRef}
+      args={[PARTICLE_GEOMETRY, particleMaterial, count]}
+      castShadow={false}
+      receiveShadow={false}
+    />
   );
 };
 

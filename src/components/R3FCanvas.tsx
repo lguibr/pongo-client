@@ -1,7 +1,6 @@
 import React, { useMemo, Suspense, useEffect } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { Environment } from '@react-three/drei';
 
 import {
   Paddle as PaddleType, Ball as BallType, BrickStateUpdate,
@@ -150,7 +149,7 @@ const R3FCanvas: React.FC<R3FCanvasProps> = ({
   const gameContentWidth = useMemo(() => boundaries.extentX * 2, [boundaries.extentX]);
   const gameContentHeight = useMemo(() => boundaries.extentY * 2, [boundaries.extentY]);
 
-  const fov = 60;
+  const fov = 45;
   const minCamDist = Math.max(gameContentWidth, gameContentHeight) * 0.7;
   const camPaddingFactor = 1.15;
   const camXOffsetFactor = 0.0;
@@ -185,35 +184,30 @@ const R3FCanvas: React.FC<R3FCanvasProps> = ({
         cameraYOffsetFactor={camYOffsetFactor}
       />
 
-      <Suspense fallback={null}>
-        {/* Using a very simple environment or none at all for flat design */}
-        {/* <Environment preset="city" background={false} blur={0.8} /> */}
-        {/* Or, for an even flatter look, rely solely on direct lights: */}
-        <Environment files={null} background={false} blur={0} />
-      </Suspense>
+      {/* Environment component removed */}
 
-      <ambientLight intensity={0.8} color="#ffffff" /> {/* Increased ambient for flatter look */}
+
+      <ambientLight intensity={0.8} color="#ffffff" />
       <hemisphereLight
-        color={new THREE.Color(theme.colors.accent).multiplyScalar(0.05)} // Very subtle cool top
-        groundColor={new THREE.Color(theme.colors.accent).multiplyScalar(0.02)} // Very subtle warm bottom
-        intensity={0.5} // Reduced intensity as ambient is stronger
+        color={new THREE.Color(theme.colors.accent).multiplyScalar(0.05)}
+        groundColor={new THREE.Color(theme.colors.accent).multiplyScalar(0.02)}
+        intensity={0.5}
       />
       <directionalLight
-        position={[gameContentWidth * 0.2, gameContentHeight * 0.5, Math.max(gameContentWidth, gameContentHeight) * 1.0]} // Adjusted position
-        intensity={0.8} // Reduced intensity
+        position={[gameContentWidth * 0.2, gameContentHeight * 0.5, Math.max(gameContentWidth, gameContentHeight) * 1.0]}
+        intensity={0.8}
         castShadow
-        shadow-mapSize-width={1024} // Reduced shadow map size for performance
+        shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
-        shadow-camera-left={-boundaries.extentX * 2.0} // Tighter shadow frustum
+        shadow-camera-left={-boundaries.extentX * 2.0}
         shadow-camera-right={boundaries.extentX * 2.0}
         shadow-camera-top={boundaries.extentY * 2.0}
         shadow-camera-bottom={-boundaries.extentY * 2.0}
-        shadow-camera-near={50} // Adjusted near/far
+        shadow-camera-near={50}
         shadow-camera-far={Math.max(gameContentWidth, gameContentHeight) * 3}
-        shadow-bias={-0.0005} // Adjusted bias
+        shadow-bias={-0.0005}
         shadow-normalBias={0.03}
       />
-      {/* Removed second directional light to simplify and flatten lighting */}
 
       {canRenderGame && (
         <Suspense fallback={null}>

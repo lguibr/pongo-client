@@ -114,7 +114,8 @@ const processPaddleUpdate = (
 const processBallUpdate = (
   currentBalls: Ball[],
   update: AtomicUpdate,
-  playSound: (type: SoundEventType, index?: number) => void
+  playSound: (type: SoundEventType, index?: number) => void,
+  myPlayerIndex: number | null
 ): Ball[] | null => {
   let newBalls = currentBalls;
   let changed = false;
@@ -161,10 +162,24 @@ const processBallUpdate = (
     const index = newBalls.findIndex(b => b.id === update.id);
     if (index !== -1) {
       const currentBall = newBalls[index];
-      if (currentBall.ownerIndex !== update.newOwnerIndex) {
+      const oldOwner = currentBall.ownerIndex;
+      const newOwner = update.newOwnerIndex;
+
+      if (oldOwner !== newOwner) {
         if (!changed) { newBalls = [...currentBalls]; changed = true; }
-        newBalls[index] = { ...currentBall, ownerIndex: update.newOwnerIndex };
-        playSound('ball_ownership_change');
+        newBalls[index] = { ...currentBall, ownerIndex: newOwner };
+
+        if (myPlayerIndex !== null) {
+          if (oldOwner === myPlayerIndex && newOwner !== myPlayerIndex) {
+            playSound('ball_lost_by_player');
+          } else if (oldOwner !== myPlayerIndex && newOwner === myPlayerIndex) {
+            playSound('ball_gained_by_player');
+          } else {
+            playSound('ball_ownership_change'); // Changed between other players or unowned
+          }
+        } else {
+          playSound('ball_ownership_change'); // myPlayerIndex is null, play generic
+        }
       }
     }
   }
@@ -174,13 +189,14 @@ const processBallUpdate = (
 function applyUpdates<T>(
   currentState: T,
   updates: AtomicUpdate[],
-  processor: (state: T, update: AtomicUpdate, playSound: (type: SoundEventType, index?: number) => void) => T | null,
-  playSound: (type: SoundEventType, index?: number) => void
+  processor: (state: T, update: AtomicUpdate, playSound: (type: SoundEventType, index?: number) => void, myPlayerIndex: number | null) => T | null,
+  playSound: (type: SoundEventType, index?: number) => void,
+  myPlayerIndex: number | null
 ): T {
   let newState = currentState;
   updates.forEach(update => {
-    if (isFullGridUpdate(update)) return;
-    const processedState = processor(newState, update, playSound);
+    if (isFullGridUpdate(update)) return; // FullGridUpdate is handled separately
+    const processedState = processor(newState, update, playSound, myPlayerIndex);
     if (processedState !== null) {
       newState = processedState;
     }
@@ -249,9 +265,11 @@ export function useGameState(
       } else if (isGameUpdatesBatch(data)) {
         if (isGameOverRef.current) return;
 
-        setOriginalPlayers(current => applyUpdates(current, data.updates, processPlayerUpdate, playSound));
-        setOriginalPaddles(current => applyUpdates(current, data.updates, processPaddleUpdate, playSound));
-        setOriginalBalls(current => applyUpdates(current, data.updates, processBallUpdate, playSound));
+        // Pass myPlayerIndex to the applyUpdates for balls
+        setOriginalPlayers(current => applyUpdates(current, data.updates, processPlayerUpdate, playSound, myPlayerIndex));
+        setOriginalPaddles(current => applyUpdates(current, data.updates, processPaddleUpdate, playSound, myPlayerIndex));
+        setOriginalBalls(current => applyUpdates(current, data.updates, processBallUpdate, playSound, myPlayerIndex));
+
 
         const gridUpdate = data.updates.find(isFullGridUpdate);
         if (gridUpdate) {
@@ -275,7 +293,7 @@ export function useGameState(
     } catch (e) {
       console.error('Failed to parse WebSocket message:', e);
     }
-  }, [lastMessage, playSound]);
+  }, [lastMessage, playSound, myPlayerIndex]); // Added myPlayerIndex to dependencies
 
   return {
     originalPlayers,

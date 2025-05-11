@@ -5,7 +5,9 @@ export type SoundEventType =
   | 'paddle_collision'
   | 'brick_break'
   | 'ball_ownership_change'
-  | 'ball_collision';
+  | 'ball_collision'
+  | 'ball_lost_by_player'
+  | 'ball_gained_by_player';
 
 const SOUND_FILES: Record<SoundEventType, string[]> = {
   paddle_collision: [
@@ -29,6 +31,14 @@ const SOUND_FILES: Record<SoundEventType, string[]> = {
     '/sounds/ball_ownership_change/3.wav',
     '/sounds/ball_ownership_change/4.wav',
   ],
+  ball_lost_by_player: [
+    '/sounds/ball_ownership_change/lost_0.wav',
+    '/sounds/ball_ownership_change/lost_1.wav',
+  ],
+  ball_gained_by_player: [
+    '/sounds/ball_ownership_change/gained_0.wav',
+    '/sounds/ball_ownership_change/gained_1.wav',
+  ],
   ball_collision: [
     '/sounds/ball_collision/0.wav',
     '/sounds/ball_collision/1.wav',
@@ -38,24 +48,27 @@ const SOUND_FILES: Record<SoundEventType, string[]> = {
   ],
 };
 
-const LOCAL_STORAGE_MUTED_KEY = 'pongo-muted';
+const LOCAL_STORAGE_VOLUME_KEY = 'pongo-volume';
+const DEFAULT_VOLUME = 0.5;
 
 export interface SoundManager {
   playSound: (type: SoundEventType, index?: number) => void;
-  toggleMute: () => void;
-  isMuted: boolean;
+  setVolume: (volume: number) => void;
+  volume: number;
   isLoading: boolean;
   error: string | null;
+  resumeContext: () => Promise<void>;
 }
 
 export function useSoundManager(): SoundManager {
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const soundBuffers = useRef<Partial<Record<SoundEventType, AudioBuffer[]>>>(
     {}
   );
-  const [isMuted, setIsMuted] = useState<boolean>(() => {
-    const storedMuteState = localStorage.getItem(LOCAL_STORAGE_MUTED_KEY);
-    return storedMuteState ? JSON.parse(storedMuteState) : false;
+  const [volume, setVolumeState] = useState<number>(() => {
+    const storedVolume = localStorage.getItem(LOCAL_STORAGE_VOLUME_KEY);
+    return storedVolume ? parseFloat(storedVolume) : DEFAULT_VOLUME;
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +80,10 @@ export function useSoundManager(): SoundManager {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).webkitAudioContext)();
       setAudioContext(context);
+      const gainNode = context.createGain();
+      gainNode.connect(context.destination);
+      gainNodeRef.current = gainNode;
+
       if (context.state === 'suspended') {
         audioContextResumed.current = false;
       } else {
@@ -79,34 +96,47 @@ export function useSoundManager(): SoundManager {
     }
   }, []);
 
-  useEffect(() => {
-    const resumeAudio = async () => {
-      if (audioContext && audioContext.state === 'suspended' && !audioContextResumed.current) {
-        try {
-          await audioContext.resume();
-          audioContextResumed.current = true;
-          console.log('AudioContext resumed on user gesture.');
-        } catch (err) {
-          console.error('Error resuming AudioContext:', err);
-        }
+  const resumeContext = useCallback(async () => {
+    if (audioContext && audioContext.state === 'suspended' && !audioContextResumed.current) {
+      try {
+        await audioContext.resume();
+        audioContextResumed.current = true;
+        console.log('AudioContext resumed on user gesture.');
+      } catch (err) {
+        console.error('Error resuming AudioContext:', err);
+        // Optionally, inform the user that audio could not be started
       }
+    }
+  }, [audioContext]);
+
+
+  useEffect(() => {
+    const handleInteractionToResumeAudio = async () => {
+      await resumeContext();
       if (audioContext && (audioContext.state === 'running' || audioContextResumed.current)) {
-        document.removeEventListener('click', resumeAudio);
-        document.removeEventListener('touchstart', resumeAudio);
+        document.removeEventListener('click', handleInteractionToResumeAudio);
+        document.removeEventListener('touchstart', handleInteractionToResumeAudio);
       }
     };
 
     if (audioContext && audioContext.state === 'suspended' && !audioContextResumed.current) {
-      document.addEventListener('click', resumeAudio, { once: true });
-      document.addEventListener('touchstart', resumeAudio, { once: true });
+      document.addEventListener('click', handleInteractionToResumeAudio, { once: true });
+      document.addEventListener('touchstart', handleInteractionToResumeAudio, { once: true });
     }
 
     return () => {
-      document.removeEventListener('click', resumeAudio);
-      document.removeEventListener('touchstart', resumeAudio);
+      document.removeEventListener('click', handleInteractionToResumeAudio);
+      document.removeEventListener('touchstart', handleInteractionToResumeAudio);
     };
-  }, [audioContext]);
+  }, [audioContext, resumeContext]);
 
+
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.setValueAtTime(volume, audioContext?.currentTime ?? 0);
+    }
+    localStorage.setItem(LOCAL_STORAGE_VOLUME_KEY, volume.toString());
+  }, [volume, audioContext]);
 
   useEffect(() => {
     if (!audioContext) return;
@@ -119,6 +149,10 @@ export function useSoundManager(): SoundManager {
       try {
         const response = await fetch(path);
         if (!response.ok) {
+          if (path.includes("lost_") || path.includes("gained_")) {
+            console.warn(`Placeholder sound file not found (this is expected if not yet added): ${path}`);
+            return;
+          }
           throw new Error(`Failed to fetch ${path}: ${response.statusText}`);
         }
         const arrayBuffer = await response.arrayBuffer();
@@ -126,9 +160,9 @@ export function useSoundManager(): SoundManager {
 
         soundBuffers.current[type] = soundBuffers.current[type] || [];
         soundBuffers.current[type]![bufferIndex] = audioBuffer;
-      } catch (e: unknown) { // Changed from any to unknown
+      } catch (e: unknown) {
         let message = `Error loading sound ${path}`;
-        if (e instanceof Error) { // Type check
+        if (e instanceof Error) {
           message = `${message}: ${e.message}`;
         }
         console.error(message, e);
@@ -157,27 +191,53 @@ export function useSoundManager(): SoundManager {
   }, [audioContext]);
 
   const _playSoundInternal = useCallback((type: SoundEventType, index?: number) => {
-    if (!audioContext) return;
+    if (!audioContext || !gainNodeRef.current) return;
 
     const buffersForType = soundBuffers.current[type];
-    if (!buffersForType || buffersForType.length === 0) {
-      console.warn(`Sound buffers for type "${type}" not loaded or empty.`);
+    if (!buffersForType || buffersForType.length === 0 || buffersForType.every(b => !b)) {
+      console.warn(`Sound buffers for type "${type}" not loaded, empty, or all failed to load.`);
+      if (type === 'ball_lost_by_player' || type === 'ball_gained_by_player') {
+        console.warn(`Falling back to 'ball_ownership_change' sound for ${type}.`);
+        const fallbackBuffers = soundBuffers.current['ball_ownership_change'];
+        if (fallbackBuffers && fallbackBuffers.length > 0 && fallbackBuffers.some(b => !!b)) {
+          const validFallbackBuffers = fallbackBuffers.filter(b => !!b);
+          const randomIndex = Math.floor(Math.random() * validFallbackBuffers.length);
+          const bufferToPlay = validFallbackBuffers[randomIndex];
+          if (bufferToPlay) {
+            try {
+              const source = audioContext.createBufferSource();
+              source.buffer = bufferToPlay;
+              source.connect(gainNodeRef.current);
+              source.start(0);
+            } catch (e: unknown) {
+              console.error(`Error playing fallback sound for ${type}:`, e);
+            }
+          }
+          return;
+        }
+      }
+      return;
+    }
+
+    const validBuffers = buffersForType.filter(b => !!b);
+    if (validBuffers.length === 0) {
+      console.warn(`No valid sound buffers found for type "${type}" after filtering.`);
       return;
     }
 
     let bufferToPlay: AudioBuffer | undefined;
-    if (index !== undefined && index >= 0 && index < buffersForType.length) {
-      bufferToPlay = buffersForType[index];
+    if (index !== undefined && index >= 0 && index < validBuffers.length) {
+      bufferToPlay = validBuffers[index];
     } else {
-      const randomIndex = Math.floor(Math.random() * buffersForType.length);
-      bufferToPlay = buffersForType[randomIndex];
+      const randomIndex = Math.floor(Math.random() * validBuffers.length);
+      bufferToPlay = validBuffers[randomIndex];
     }
 
     if (bufferToPlay) {
       try {
         const source = audioContext.createBufferSource();
         source.buffer = bufferToPlay;
-        source.connect(audioContext.destination);
+        source.connect(gainNodeRef.current);
         source.start(0);
       } catch (e: unknown) {
         let message = `Error playing sound ${type}`;
@@ -187,47 +247,33 @@ export function useSoundManager(): SoundManager {
         console.error(message, e);
       }
     } else {
-      console.warn(`Buffer to play for sound type "${type}" is undefined.`);
+      console.warn(`Buffer to play for sound type "${type}" is undefined after selection.`);
     }
   }, [audioContext]);
 
   const playSound = useCallback(
-    (type: SoundEventType, index?: number) => {
-      if (isMuted || !audioContext) {
-        return;
-      }
+    async (type: SoundEventType, index?: number) => {
+      if (!audioContext) return;
+      if (volume === 0) return; // Don't play if volume is 0
+
       if (audioContext.state === 'suspended') {
-        audioContext.resume().then(() => {
-          audioContextResumed.current = true;
-          if (!isMuted) _playSoundInternal(type, index);
-        }).catch(err => console.error("Error resuming audio context on play:", err));
-        return;
+        await resumeContext();
       }
 
-      if (!audioContextResumed.current) {
-        console.warn("AudioContext not yet resumed by user gesture. Sound play might fail.");
+      if (audioContext.state === 'running') {
+        _playSoundInternal(type, index);
+      } else {
+        console.warn("AudioContext not running. Sound play might fail.");
       }
-
-      _playSoundInternal(type, index);
     },
-    [isMuted, audioContext, _playSoundInternal]
+    [audioContext, volume, _playSoundInternal, resumeContext]
   );
 
-  const toggleMute = useCallback(() => {
-    setIsMuted((prevMuted) => {
-      const newMutedState = !prevMuted;
-      localStorage.setItem(
-        LOCAL_STORAGE_MUTED_KEY,
-        JSON.stringify(newMutedState)
-      );
-      if (!newMutedState && audioContext && audioContext.state === 'suspended' && !audioContextResumed.current) {
-        audioContext.resume().then(() => {
-          audioContextResumed.current = true;
-        }).catch(err => console.error("Error resuming audio context on unmute:", err));
-      }
-      return newMutedState;
-    });
-  }, [audioContext]);
+  const setVolume = useCallback((newVolume: number) => {
+    const clampedVolume = Math.max(0, Math.min(1, newVolume));
+    setVolumeState(clampedVolume);
+  }, []);
 
-  return { playSound, toggleMute, isMuted, isLoading, error };
+
+  return { playSound, setVolume, volume, isLoading, error, resumeContext };
 }

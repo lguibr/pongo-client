@@ -22,7 +22,7 @@ interface ShatterEffectInstance {
 }
 
 const getBrickColor = (life: number, type: number): THREE.Color => {
-  if (type === 2 || life <= 0) return new THREE.Color(theme.colors.background); // Should not be visible
+  if (type === 2 || life <= 0) return new THREE.Color(theme.colors.background);
   const lifeIndex = Math.max(0, life - 1);
   const colorHex = theme.colors.brickLife[
     Math.min(lifeIndex, theme.colors.brickLife.length - 1)
@@ -30,18 +30,17 @@ const getBrickColor = (life: number, type: number): THREE.Color => {
   return new THREE.Color(colorHex);
 };
 
-const MIN_VISIBLE_DEPTH_SCALE = 0.001; // For placeholder if type === 2 but somehow rendered
+const MIN_VISIBLE_DEPTH_SCALE = 0.001;
 
-const BRICK_ROUNDING_RADIUS_FACTOR = 0.03; // Slightly more rounding for material design feel
+const BRICK_ROUNDING_RADIUS_FACTOR = 0.03;
 const BRICK_BEVEL_SEGMENTS = 4;
 
-// Material properties for a flat, slightly translucent look
 const BRICK_ROUGHNESS = 0.75;
 const BRICK_METALNESS = 0.05;
-const BRICK_TRANSMISSION = 0.3; // Slight translucency
-const BRICK_OPACITY = 0.85;     // Overall opacity if transmission is not fully handling it
-const BRICK_IOR = 1.0;          // No refraction for flat look
-const BRICK_THICKNESS_FACTOR_FOR_TRANSMISSION = 0.1; // How "thick" it appears for transmission
+const BRICK_TRANSMISSION = 0.3;
+const BRICK_OPACITY = 0.85;
+const BRICK_IOR = 1.0;
+const BRICK_THICKNESS_FACTOR_FOR_TRANSMISSION = 0.1;
 const BRICK_ENV_MAP_INTENSITY = 0.2;
 
 
@@ -54,7 +53,6 @@ const Brick3D: React.FC<Brick3DProps> = ({ life, type, cellSize, position }) => 
 
   const calculateCurrentDepth = useCallback((currentLifeVal: number) => {
     if (type === 2 || currentLifeVal <= 0) return MIN_VISIBLE_DEPTH_SCALE * cellSize;
-    // Each life point contributes to the total depth
     return Math.max(
       MIN_VISIBLE_DEPTH_SCALE * cellSize,
       currentLifeVal * theme.sizes.brickDepthPerLifeUnit * cellSize
@@ -69,7 +67,7 @@ const Brick3D: React.FC<Brick3DProps> = ({ life, type, cellSize, position }) => 
 
   const { animatedDepth } = useSpring({
     animatedDepth: currentDepth,
-    config: { mass: 0.5, tension: 180, friction: 20 }, // Slightly softer spring
+    config: { mass: 0.5, tension: 180, friction: 20 },
   });
 
   const currentOpacitySetting = useMemo(() => {
@@ -82,18 +80,17 @@ const Brick3D: React.FC<Brick3DProps> = ({ life, type, cellSize, position }) => 
       materialRef.current.color.set(currentColor);
       materialRef.current.opacity = currentOpacitySetting;
       materialRef.current.transparent = isActuallyVisible && (BRICK_TRANSMISSION > 0 || currentOpacitySetting < 1.0);
-      materialRef.current.depthWrite = !materialRef.current.transparent || currentOpacitySetting > 0.95; // Write depth if mostly opaque
+      materialRef.current.depthWrite = !materialRef.current.transparent || currentOpacitySetting > 0.95;
 
       materialRef.current.transmission = isActuallyVisible ? BRICK_TRANSMISSION : 0;
       materialRef.current.thickness = isActuallyVisible ? animatedDepth.get() * BRICK_THICKNESS_FACTOR_FOR_TRANSMISSION : 0;
 
-      // Flat material properties
       materialRef.current.roughness = BRICK_ROUGHNESS;
       materialRef.current.metalness = BRICK_METALNESS;
       materialRef.current.ior = BRICK_IOR;
       materialRef.current.clearcoat = 0;
       materialRef.current.sheen = 0;
-      materialRef.current.emissiveIntensity = 0; // No glow
+      materialRef.current.emissiveIntensity = 0;
       materialRef.current.envMapIntensity = BRICK_ENV_MAP_INTENSITY;
       materialRef.current.needsUpdate = true;
     }
@@ -103,22 +100,30 @@ const Brick3D: React.FC<Brick3DProps> = ({ life, type, cellSize, position }) => 
   useEffect(() => {
     const prevLifeValue = previousLife.current;
 
-    if (life < prevLifeValue && isActuallyVisible) { // Only shatter if it was and still is visible
+    if (life < prevLifeValue && prevLifeValue > 0) { // Trigger if life decreased and was previously > 0
       const colorBeforeHit = getBrickColor(prevLifeValue, type);
-      const lostLifeLayers = prevLifeValue - life;
+      // Calculate how many "layers" of life were lost.
+      // If life goes from 3 to 0, lostLifeLayers is 3.
+      // If life goes from 1 to 0, lostLifeLayers is 1.
+      const lostLifeLayers = prevLifeValue - Math.max(0, life);
+
 
       for (let i = 0; i < lostLifeLayers; i++) {
+        // lifeOfLayerBeingShattered is the life value *before* this specific layer was lost.
         const lifeOfLayerBeingShattered = prevLifeValue - i;
+        if (lifeOfLayerBeingShattered <= 0) continue; // Should not happen if lostLifeLayers is correct
+
         const depthOfLayerBeforeShatter = calculateCurrentDepth(lifeOfLayerBeingShattered);
+        // The depth after this specific layer is lost. If it's the last life, this will be effectively 0.
         const depthOfLayerAfterShatter = calculateCurrentDepth(lifeOfLayerBeingShattered - 1);
 
-        // Ensure shatteredLayerThickness is positive and significant
         const shatteredLayerThickness = Math.max(0.001 * cellSize, depthOfLayerBeforeShatter - depthOfLayerAfterShatter);
 
-        if (shatteredLayerThickness > 0.0005 * cellSize) { // Check against a small fraction of cell size
+        if (shatteredLayerThickness > 0.0005 * cellSize) {
           const shatterId = `shatter-${Date.now()}-${Math.random()}-${i}`;
+          // Z position of the center of the shattering layer
           const shatterLayerCenterZ = position[2] + depthOfLayerAfterShatter + (shatteredLayerThickness / 2);
-          const Z_OFFSET_FOR_SHATTER = shatteredLayerThickness * 0.05; // Smaller offset
+          const Z_OFFSET_FOR_SHATTER = shatteredLayerThickness * 0.05;
 
           setActiveShatters(prev => [
             ...prev,
@@ -126,7 +131,7 @@ const Brick3D: React.FC<Brick3DProps> = ({ life, type, cellSize, position }) => 
               id: shatterId,
               centerPosition: new THREE.Vector3(position[0], position[1], shatterLayerCenterZ + Z_OFFSET_FOR_SHATTER),
               layerDimensions: {
-                width: cellSize * 0.88, // Match brick visual width/height
+                width: cellSize * 0.88,
                 height: cellSize * 0.88,
                 depth: shatteredLayerThickness,
               },
@@ -137,7 +142,7 @@ const Brick3D: React.FC<Brick3DProps> = ({ life, type, cellSize, position }) => 
       }
     }
     previousLife.current = life;
-  }, [life, type, isActuallyVisible, cellSize, position, calculateCurrentDepth]);
+  }, [life, type, cellSize, position, calculateCurrentDepth]);
 
   const handleShatterComplete = useCallback((id: string) => {
     setActiveShatters(prev => prev.filter(s => s.id !== id));
@@ -159,15 +164,14 @@ const Brick3D: React.FC<Brick3DProps> = ({ life, type, cellSize, position }) => 
             ref={meshRef}
             castShadow
             receiveShadow
-            args={[boxWidth, boxHeight, 1]} // Depth is controlled by scale.z
+            args={[boxWidth, boxHeight, 1]}
             radius={radius}
             smoothness={BRICK_BEVEL_SEGMENTS}
             scale-z={animatedDepth}
-            position-z={animatedDepth.to(ad => ad / 2)} // Keep base at z=0 of the group
+            position-z={animatedDepth.to(ad => ad / 2)}
           >
             <meshPhysicalMaterial
               ref={materialRef}
-            // Properties are set in useEffect
             />
           </AnimatedRoundedBox>
         </group>
