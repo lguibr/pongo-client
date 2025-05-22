@@ -1,6 +1,6 @@
 // File: src/App.tsx
-import { SpeedInsights } from "@vercel/speed-insights/next"
-import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/react"
+import { Analytics } from "@vercel/analytics/react"
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import styled, { DefaultTheme, ThemeProvider, keyframes } from 'styled-components';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
