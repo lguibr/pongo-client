@@ -1,4 +1,4 @@
-""""""{
+{
   "name": "PonGo Game",
   "short_name": "PonGo",
   "description": "A multiplayer Pong-like game with bricks and mayhem, built with React and Three.js.",
@@ -24,7 +24,7 @@
   ],
   "start_url": "/",
   "display": "fullscreen",
-  "orientation": "landscape",
+  "orientation": "portrait",
   "background_color": "#000000",
   "theme_color": "#000000",
   "scope": "/"
