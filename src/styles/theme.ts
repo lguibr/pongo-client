@@ -68,13 +68,13 @@ const theme = {
     },
   },
   sizes: {
-    headerHeight: '96px',
-    minScreenPadding: '.25rem',
+    headerHeight: 'var(--header-height)', // Or your fixed value like '60px'
+    minScreenPadding: '.25rem', // Keep this for internal padding of GameAreaContainer
     borderRadius: '8px',
     brickBorderRadius: '12px',
     boundaryWallThickness: 10,
     boundaryWallDepth: 16,
-    mobileControlsHeight: '80px',
+    mobileControlsHeight: 'var(--controls-height)', // Or your fixed value like '70px'
     brickDepthPerLifeUnit: 0.12,
   },
   shadows: {

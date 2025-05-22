@@ -1,6 +1,7 @@
 // File: src/App.tsx
 import { SpeedInsights } from "@vercel/speed-insights/react"
 import { Analytics } from "@vercel/analytics/react"
+// File: src/App.tsx
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import styled, { DefaultTheme, ThemeProvider, keyframes } from 'styled-components';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
@@ -36,47 +37,48 @@ const AppContainer = styled.div<{ theme: DefaultTheme }>`
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  height: 100%; /* Will fill #root */
   overflow: hidden;
   background-color: ${({ theme }) => theme.colors.background};
+  /* Safe area padding only for top, left, right. Bottom is handled by controls. */
   padding-top: env(safe-area-inset-top, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   padding-left: env(safe-area-inset-left, 0px);
 `;
 
 const Header = styled.header<{ theme: DefaultTheme }>`
-  height: ${({ theme }) => theme.sizes.headerHeight};
+  height: var(--header-height); /* Use CSS Variable */
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 15px; /* Reduced padding slightly for mobile */
+  padding: 0 15px;
   z-index: 10;
-  flex-shrink: 0;
+  flex-shrink: 0; /* Prevent header from shrinking */
   position: relative;
+  background-color: ${({ theme }) => theme.colors.background}; /* Ensure header has bg */
 `;
 
 const LogoContainer = styled.div`
   display: flex;
   align-items: center;
-  /* For centering, ensure it doesn't get pushed by flex items if header is crowded */
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  /* Ensure it doesn't prevent interaction with elements underneath if it's too wide */
   pointer-events: none; 
   & > * {
-    pointer-events: auto; /* Allow interaction with logo/title itself */
+    pointer-events: auto; 
   }
 `;
 
 const Logo = styled.img<{ animate: boolean }>`
-  height: 30px; /* Slightly smaller for mobile friendliness */
+  height: calc(var(--header-height) * 0.5); /* Scale logo with header */
+  max-height: 30px; /* Max size */
   margin-right: 10px;
   animation: ${({ animate }) => (animate ? logoShakeAnimation : 'none')} 0.5s ease-in-out;
 `;
 
 const Title = styled.h1<{ theme: DefaultTheme }>`
-  font-size: ${({ theme }) => theme.fonts.sizes.titleMobile}; /* Responsive font size */
+  font-size: ${({ theme }) => theme.fonts.sizes.titleMobile}; 
   @media (min-width: 768px) {
     font-size: ${({ theme }) => theme.fonts.sizes.title};
   }
@@ -88,11 +90,11 @@ const Title = styled.h1<{ theme: DefaultTheme }>`
 const VolumeControlContainer = styled.div`
   display: flex;
   align-items: center;
-  margin-left: auto; /* Pushes to the right */
+  margin-left: auto; 
 `;
 
 const VolumeIconContainer = styled.div<{ theme: DefaultTheme }>`
-  display: flex; /* For centering the SVG if needed */
+  display: flex; 
   align-items: center;
   justify-content: center;
   color: ${({ theme }) => theme.colors.text};
@@ -101,7 +103,7 @@ const VolumeIconContainer = styled.div<{ theme: DefaultTheme }>`
   opacity: 0.8;
   transition: opacity 0.2s;
   user-select: none;
-  padding: 5px; /* Add some padding for easier clicking */
+  padding: 5px;
 
   &:hover {
     opacity: 1;
@@ -109,7 +111,7 @@ const VolumeIconContainer = styled.div<{ theme: DefaultTheme }>`
 `;
 
 const VolumeSliderInput = styled.input.attrs({ type: 'range' }) <{ theme: DefaultTheme }>`
-  width: 80px; /* Slightly smaller slider for mobile */
+  width: 80px; 
   @media (min-width: 768px) {
     width: 100px;
   }
@@ -151,24 +153,44 @@ const VolumeSliderInput = styled.input.attrs({ type: 'range' }) <{ theme: Defaul
   }
 `;
 
-
-const CanvasArea = styled.div<{ theme: DefaultTheme }>`
-  position: relative;
-  flex-grow: 1;
-  min-height: 0;
+// This is the flex child that will grow and shrink
+const GameAreaContainer = styled.div`
+  flex-grow: 1; /* Takes up remaining vertical space */
+  position: relative; /* For StatusOverlay and GameOverOverlay */
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: ${({ theme }) => theme.sizes.minScreenPadding};
-  overflow: hidden;
+  overflow: hidden; /* Crucial: Prevents its content from causing scroll */
+  padding: 5px; /* Small padding around the game canvas wrapper */
+  min-height: 0; /* Allows flex item to shrink below content size */
 `;
 
+// This wrapper will maintain the aspect ratio for the R3F Canvas
+const GameCanvasWrapper = styled.div`
+  width: 100%;
+  height: 100%;
+  max-width: 100%; /* Ensure it doesn't overflow GameAreaContainer width */
+  max-height: 100%; /* Ensure it doesn't overflow GameAreaContainer height */
+  aspect-ratio: var(--game-aspect-ratio); /* Enforce aspect ratio */
+  position: relative; /* If R3FCanvas needs to be absolute or for other children */
+  display: flex; /* To make R3FCanvas fill this wrapper */
+  justify-content: center;
+  align-items: center;
+
+  & > canvas { /* Target the R3F canvas element directly */
+    display: block; /* Remove extra space below canvas */
+    width: 100% !important; /* Force R3F canvas to fill wrapper */
+    height: 100% !important; /* Force R3F canvas to fill wrapper */
+  }
+`;
+
+
 const ScoreBoard = styled.div<{ theme: DefaultTheme }>`
-  position: fixed;
-  top: 12px;
-  left: 12px;
+  position: fixed; /* Changed from absolute to fixed for simplicity with new layout */
+  top: calc(var(--header-height) + 10px); /* Position below header */
+  left: 10px;
   padding: 8px;
-  opacity: 0.4;
+  opacity: 0.6; /* Slightly more visible */
   z-index: 20;
   background: ${({ theme }) => theme.colors.scoreboardBackground};
   border-radius: ${({ theme }) => theme.sizes.borderRadius};
@@ -181,12 +203,9 @@ const ScoreBoard = styled.div<{ theme: DefaultTheme }>`
   font-weight: 500;
 
   @media (min-width: 768px) {
-    position: fixed;
-    top: 20px;
-    left: 20px;
-    padding: 12px 18px;
-    opacity: 1;
+    padding: 10px 15px;
     font-size: ${({ theme }) => theme.fonts.sizes.score};
+    opacity: 0.8;
   }
   
   div {
@@ -203,7 +222,7 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: rgba(0, 0, 0, 0.85); /* Slightly darker */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -211,24 +230,27 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   color: ${({ theme }) => theme.colors.text};
   z-index: 50;
   text-align: center;
-  h2 { font-size: 3em; margin-bottom: 25px; color: ${({ theme }) => theme.colors.accent}; }
-  p { font-size: 1.3em; margin-bottom: 18px; }
-  ul { list-style: none; padding: 0; margin-top: 12px; }
-  li { margin-bottom: 6px; font-size: 1.1em; }
+  padding: 20px;
+  h2 { font-size: 2.5em; margin-bottom: 20px; color: ${({ theme }) => theme.colors.accent}; }
+  p { font-size: 1.2em; margin-bottom: 15px; }
+  ul { list-style: none; padding: 0; margin-top: 10px; }
+  li { margin-bottom: 5px; font-size: 1em; }
 `;
 
 const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
-  height: ${({ theme }) => theme.sizes.mobileControlsHeight};
+  height: var(--controls-height); /* Use CSS Variable */
   display: flex;
-  gap: 1rem;
-  padding: .5rem;
-  flex-shrink: 0;
+  gap: 0.5rem; /* Reduced gap slightly */
+  padding: 0.5rem;
+  flex-shrink: 0; /* Prevent controls from shrinking */
   z-index: 30;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
   justify-content: space-around;
-  margin-bottom: max(env(safe-area-inset-top, 12px),12px);
+  /* Add safe area padding to the bottom of the controls container itself */
+  padding-bottom: max(env(safe-area-inset-bottom, 0.5rem), 0.5rem);
+  background-color: ${({ theme }) => theme.colors.background}; /* Ensure controls have bg */
 `;
 
 const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
@@ -238,8 +260,8 @@ const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
   justify-content: center;
   align-items: center;
   background-color: ${({ theme, isActive }) => isActive ? theme.colors.mobileButtonBackgroundActive : theme.colors.mobileButtonBackground};
-  border: none;
-  border-top: 1px solid ${({ theme }) => theme.colors.mobileButtonBorder};
+  border: 1px solid ${({ theme }) => theme.colors.mobileButtonBorder}; /* Consistent border */
+  border-radius: ${({ theme }) => theme.sizes.borderRadius}; /* Rounded corners */
   color: ${({ theme }) => theme.colors.mobileButtonSymbol};
   font-size: ${({ theme }) => theme.fonts.sizes.mobileButtonSymbol};
   font-weight: bold;
@@ -248,9 +270,10 @@ const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
   outline: none;
   transform: ${({ isActive }) => isActive ? 'scale(0.98)' : 'scale(1)'};
 
-  &:first-child {
+  /* Remove specific border-right for first-child, rely on gap and individual borders */
+  /* &:first-child {
     border-right: 1px solid ${({ theme }) => theme.colors.mobileButtonBorder};
-  }
+  } */
 
   &:active {
     background-color: ${({ theme }) => theme.colors.mobileButtonBackgroundActive};
@@ -266,7 +289,7 @@ const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
 
 function AppContent() {
   const { width } = useWindowSize();
-  const isMobileView = useMemo(() => width < 768, [width]); // Adjusted breakpoint for slider visibility
+  const isMobileView = useMemo(() => width < 768, [width]);
   const lastSentMobileLogicalDir = useRef<DirectionMessage['direction'] | null>(null);
   const lastSentLogicalKeyboardDir = useRef<DirectionMessage['direction'] | null>(null);
   const [leftActive, setLeftActive] = useState(false);
@@ -430,7 +453,7 @@ function AppContent() {
   };
 
   const renderVolumeIcon = () => {
-    const iconSize = 22; // SVG icon size
+    const iconSize = 22;
     const iconColor = theme.colors.text;
     if (volume === 0) return <VolumeMuteIcon size={iconSize} color={iconColor} />;
     if (volume < 0.33) return <VolumeLowIcon size={iconSize} color={iconColor} />;
@@ -464,32 +487,36 @@ function AppContent() {
         </VolumeControlContainer>
       </Header>
 
-      <CanvasArea theme={theme}>
-        {(isGameReady || displayStatus === 'waiting') && (
-          <R3FCanvas
-            brickStates={brickStates}
-            cellSize={cellSize}
-            paddles={originalPaddles}
-            balls={originalBalls}
-            rotationAngle={rotationRadians}
-            wsStatus={connectionStatus === ReadyState.OPEN ? 'open' : 'closed'}
-          />
-        )}
-        <ScoreBoard theme={theme}>
-          {myPlayerIndex !== null && <div>You: P{myPlayerIndex}</div>}
-          {originalPlayers
-            .filter((p): p is Player => p !== null)
-            .map((p) => (
-              <div key={p.index}>
-                P{p.index}: {String(p.score).padStart(3, ' ')}
-              </div>
-            ))}
-        </ScoreBoard>
+      <GameAreaContainer>
+        <GameCanvasWrapper>
+          {(isGameReady || displayStatus === 'waiting') && (
+            <R3FCanvas
+              brickStates={brickStates}
+              cellSize={cellSize}
+              paddles={originalPaddles}
+              balls={originalBalls}
+              rotationAngle={rotationRadians}
+              wsStatus={connectionStatus === ReadyState.OPEN ? 'open' : 'closed'}
+            />
+          )}
+        </GameCanvasWrapper>
+        {/* StatusOverlay and GameOverOverlay will be positioned relative to GameAreaContainer */}
         {displayStatus && (
           <StatusOverlay status={displayStatus} theme={theme} />
         )}
         {renderGameOver()}
-      </CanvasArea>
+      </GameAreaContainer>
+
+      <ScoreBoard theme={theme}>
+        {myPlayerIndex !== null && <div>You: P{myPlayerIndex}</div>}
+        {originalPlayers
+          .filter((p): p is Player => p !== null)
+          .map((p) => (
+            <div key={p.index}>
+              P{p.index}: {String(p.score).padStart(3, ' ')}
+            </div>
+          ))}
+      </ScoreBoard>
 
       {isMobileView && (
         <MobileControlsContainer theme={theme}>
@@ -520,8 +547,8 @@ function AppContent() {
 export default function App() {
   return (
     <>
-      <Analytics />
       <SpeedInsights />
+      <Analytics />
       <ThemeProvider theme={theme}>
         <AppContent />
       </ThemeProvider>

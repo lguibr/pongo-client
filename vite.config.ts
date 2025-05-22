@@ -19,8 +19,8 @@ export default defineConfig({
         description: 'A multiplayer Pong-like game with bricks and mayhem, built with React and Three.js.',
         theme_color: '#000000',
         background_color: '#000000',
-        display: 'standalone', // Consider 'standalone' for a more app-like feel in portrait
-        orientation: 'portrait',
+        display: 'standalone',
+        orientation: 'any', // Changed
         scope: '/',
         start_url: '/',
         icons: [
@@ -45,8 +45,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2,wasm,wav}'], // Temporarily removed .hdr
-        // runtimeCaching: [ ... ]
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2,wasm,wav}'],
       }
     })
   ],

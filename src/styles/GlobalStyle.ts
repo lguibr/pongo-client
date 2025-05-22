@@ -1,8 +1,17 @@
-
 // File: src/styles/GlobalStyle.ts
 import { createGlobalStyle } from 'styled-components';
 
 const GlobalStyle = createGlobalStyle`
+  :root {
+    /* Define fixed heights for header and controls */
+    --header-height: 60px; /* Adjust as needed */
+    --controls-height: 70px; /* Adjust for your button size + padding */
+    
+    /* Define the desired aspect ratio for your game area */
+    /* Example: 16:9. Adjust to your game's native aspect ratio */
+    --game-aspect-ratio: 16 / 9; 
+  }
+
   * {
     box-sizing: border-box;
     margin: 0;
@@ -10,19 +19,18 @@ const GlobalStyle = createGlobalStyle`
   }
 
   html, body {
-    width: 100%; /* Use 100% to fill parent */
-    height: 100%; /* Use 100% to fill parent */
-    overflow: hidden; /* Prevent scrollbars on html/body */
-    -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+    width: 100%; 
+    height: 100%; 
+    overflow: hidden; 
+    -webkit-tap-highlight-color: transparent; 
   }
 
   #root {
     width: 100%;
-    /* height is now set dynamically by src/main.tsx to window.innerHeight */
-    /* Do not set height: 100vh here as it causes issues on mobile */
-    overflow: hidden; /* Prevent scrollbars on root */
-    display: flex; /* Ensure AppContainer can fill it */
-    flex-direction: column; /* Ensure AppContainer can fill it */
+    /* height is set dynamically by src/main.tsx */
+    overflow: hidden; 
+    display: flex; 
+    flex-direction: column; 
   }
 
   body {
@@ -30,7 +38,6 @@ const GlobalStyle = createGlobalStyle`
     font-family: ${({ theme }) => theme.fonts.primary};
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Background color for the body, if #root doesn't cover everything (e.g. overscroll) */
     background-color: ${({ theme }) => theme.colors.background};
   }
 `;
