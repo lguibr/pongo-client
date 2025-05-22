@@ -1,4 +1,5 @@
 // File: src/App.tsx
+import { Analytics } from "@vercel/analytics/next"
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import styled, { DefaultTheme, ThemeProvider, keyframes } from 'styled-components';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
@@ -517,8 +518,11 @@ function AppContent() {
 
 export default function App() {
   return (
+    <>
+    <Analytics/>
     <ThemeProvider theme={theme}>
       <AppContent />
     </ThemeProvider>
+    </>
   );
 }
