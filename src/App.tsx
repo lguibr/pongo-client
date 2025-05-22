@@ -1,4 +1,5 @@
 // File: src/App.tsx
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import styled, { DefaultTheme, ThemeProvider, keyframes } from 'styled-components';
@@ -519,10 +520,11 @@ function AppContent() {
 export default function App() {
   return (
     <>
-    <Analytics/>
-    <ThemeProvider theme={theme}>
-      <AppContent />
-    </ThemeProvider>
+      <Analytics />
+      <SpeedInsights />
+      <ThemeProvider theme={theme}>
+        <AppContent />
+      </ThemeProvider>
     </>
   );
 }
