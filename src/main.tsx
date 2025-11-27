@@ -14,7 +14,11 @@ if (!container) {
 const adjustRootHeight = () => {
   const rootElement = document.getElementById('root');
   if (rootElement) {
-    rootElement.style.height = `${window.innerHeight}px`;
+    // Use visualViewport height if available, otherwise fallback to window.innerHeight
+    const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    rootElement.style.height = `${height}px`;
+    // Also scroll to top to hide address bar if possible
+    window.scrollTo(0, 0);
   }
 };
 
@@ -24,6 +28,9 @@ adjustRootHeight();
 // Adjust on resize and orientation change
 window.addEventListener('resize', adjustRootHeight);
 window.addEventListener('orientationchange', adjustRootHeight);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', adjustRootHeight);
+}
 
 const root = createRoot(container);
 
