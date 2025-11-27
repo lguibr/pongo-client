@@ -67,11 +67,40 @@ export interface Ball {
 
 // Message sent from frontend to backend
 export interface DirectionMessage {
+  messageType: 'direction';
   direction: 'ArrowLeft' | 'ArrowRight' | 'Stop';
 }
 
 // Type for visual direction used in input handling
 export type VisualDirection = 'ArrowLeft' | 'ArrowRight' | 'Stop';
+
+export interface CreateRoomRequest {
+  messageType: 'createRoom';
+  isPublic: boolean;
+}
+
+export interface JoinRoomRequest {
+  messageType: 'joinRoom';
+  code: string;
+}
+
+export interface QuickPlayRequest {
+  messageType: 'quickPlay';
+}
+
+export interface RoomCreatedResponse {
+  messageType: 'roomCreated';
+  code: string;
+  roomPID: string;
+}
+
+export interface RoomJoinedResponse {
+  messageType: 'roomJoined';
+  success: boolean;
+  roomPID: string;
+  code?: string; // Optional because it might not be present in failure cases or older backend versions
+  reason?: string;
+}
 
 
 // --- Initial Messages from Backend (Directly to Client) ---

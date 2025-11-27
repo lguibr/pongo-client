@@ -35,8 +35,8 @@ export function useInputHandler({
       if (e.repeat) return;
 
       let relevantKey: KeyDirection | null = null;
-      if (e.key === 'ArrowLeft') relevantKey = 'ArrowLeft';
-      else if (e.key === 'ArrowRight') relevantKey = 'ArrowRight';
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') relevantKey = 'ArrowLeft';
+      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') relevantKey = 'ArrowRight';
 
       if (relevantKey) {
         // Use the captured ref value
@@ -49,8 +49,8 @@ export function useInputHandler({
 
     const handleKeyUp = (e: KeyboardEvent) => {
       let relevantKey: KeyDirection | null = null;
-      if (e.key === 'ArrowLeft') relevantKey = 'ArrowLeft';
-      else if (e.key === 'ArrowRight') relevantKey = 'ArrowRight';
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') relevantKey = 'ArrowLeft';
+      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') relevantKey = 'ArrowRight';
 
       if (relevantKey) {
         // Use the captured ref value

@@ -27,9 +27,13 @@ window.addEventListener('orientationchange', adjustRootHeight);
 
 const root = createRoot(container);
 
+import { BrowserRouter } from 'react-router-dom';
+
 root.render(
   <ThemeProvider theme={theme}>
     <GlobalStyle />
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </ThemeProvider>
 );
