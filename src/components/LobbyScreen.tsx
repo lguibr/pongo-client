@@ -93,25 +93,43 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ theme, createRoom, qui
   const { sendMessage, gameState, connectionStatus, lastMessage } = useGame();
   const { phase, lobbyPlayers, myPlayerIndex, countdownSeconds } = gameState;
 
+  const [statusText, setStatusText] = React.useState('Initializing...');
+  const hasSentRequest = React.useRef(false);
+
+  // Reset request flag if connection drops
+  useEffect(() => {
+    if (connectionStatus !== 'open') {
+      hasSentRequest.current = false;
+      setStatusText('Connecting to server...');
+    }
+  }, [connectionStatus]);
+
   // connect() is now handled in App.tsx based on route
 
   // Handshake Logic
   useEffect(() => {
-    console.log(`[LobbyScreen] Handshake Check - Status: ${connectionStatus}, Create: ${createRoom}, Quick: ${quickPlay}, Code: ${code}`);
-    if (connectionStatus === 'open') {
+    console.log(`[LobbyScreen] Handshake Check - Status: ${connectionStatus}, Create: ${createRoom}, Quick: ${quickPlay}, Code: ${code}, Sent: ${hasSentRequest.current}`);
+    
+    if (connectionStatus === 'open' && !hasSentRequest.current) {
       if (createRoom) {
         console.log('[LobbyScreen] Sending createRoom request');
+        setStatusText('Creating room...');
         const isPublic = location.state?.isPublic ?? true;
         const req: CreateRoomRequest = { messageType: 'createRoom', isPublic };
         sendMessage(JSON.stringify(req));
+        hasSentRequest.current = true;
       } else if (quickPlay) {
         console.log('[LobbyScreen] Sending quickPlay request');
+        setStatusText('Looking for a match...');
         const req: QuickPlayRequest = { messageType: 'quickPlay' };
         sendMessage(JSON.stringify(req));
+        hasSentRequest.current = true;
       } else if (code) {
         console.log(`[LobbyScreen] Sending joinRoom request for ${code}`);
+        setStatusText(`Joining room ${code}...`);
         const req: JoinRoomRequest = { messageType: 'joinRoom', code };
         sendMessage(JSON.stringify(req));
+        hasSentRequest.current = true;
       }
     }
   }, [connectionStatus, createRoom, quickPlay, code, sendMessage, location.state]);
@@ -156,6 +174,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ theme, createRoom, qui
     <LobbyContainer theme={theme}>
       <Card theme={theme}>
         <Typography variant="h1" align="center" style={{ marginBottom: '0.5rem' }}>Lobby</Typography>
+        <Typography variant="body" align="center" style={{ marginBottom: '1rem', opacity: 0.7 }}>{statusText}</Typography>
         
         {code && code !== 'create' && code !== 'quickplay' && (
           <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>

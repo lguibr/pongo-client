@@ -28,13 +28,11 @@ const Container = styled.div<{ theme: DefaultTheme }>`
   overflow-y: auto;
 
   @media (max-width: 768px) {
-    display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
-    justify-items: center;
-    align-content: start;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
     padding: 10px;
     gap: 15px;
-    justify-content: normal;
   }
 `;
 
@@ -193,7 +191,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </Button>
       </div>
 
-      <div style={{ width: '100%', maxWidth: '600px', display: 'flex', alignItems: 'flex-start' }}>
+      <div style={{ width: '100%', maxWidth: '600px', display: 'flex', alignItems: 'flex-start' }} className="carousel-container">
         <Carousel slides={rulesSlides} />
       </div>
 
@@ -204,6 +202,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         .toggle-label { font-size: 1rem; }
         .action-btn { padding: 12px; }
         .quick-play-btn { height: 70px; font-size: 1.5rem; }
+        .carousel-container { margin-top: 0; }
 
         @media (max-width: 768px) {
           .logo-img { width: 100px !important; }
@@ -212,6 +211,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           .toggle-label { font-size: 0.9rem !important; }
           .action-btn { padding: 8px !important; }
           .quick-play-btn { height: 50px !important; font-size: 1.2rem !important; }
+          .carousel-container { margin-top: auto !important; }
         }
       `}</style>
     </Container>
