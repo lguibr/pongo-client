@@ -1,5 +1,6 @@
 // File: src/hooks/useSoundManager.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { soundtrackManager } from '../audio/SoundtrackManager';
 
 export type SoundEventType =
   | 'paddle_collision'
@@ -50,6 +51,7 @@ const SOUND_FILES: Record<SoundEventType, string[]> = {
 
 const LOCAL_STORAGE_VOLUME_KEY = 'pongo-volume';
 const DEFAULT_VOLUME = 0.5;
+const SFX_VOLUME_SCALING = 0.1; // Drastically reduce max volume as per user request
 
 export interface SoundManager {
   playSound: (type: SoundEventType, index?: number) => void;
@@ -58,6 +60,8 @@ export interface SoundManager {
   isLoading: boolean;
   error: string | null;
   resumeContext: () => Promise<void>;
+  soundtrackVolume: number;
+  setSoundtrackVolume: (volume: number) => void;
 }
 
 export function useSoundManager(): SoundManager {
@@ -102,10 +106,26 @@ export function useSoundManager(): SoundManager {
         await audioContext.resume();
         audioContextResumed.current = true;
         console.log('AudioContext resumed on user gesture.');
+        
+        // Start soundtrack on first resume
+        try {
+          await soundtrackManager.start();
+        } catch (e) {
+          console.error("Failed to start soundtrack:", e);
+        }
+
       } catch (err) {
         console.error('Error resuming AudioContext:', err);
-        // Optionally, inform the user that audio could not be started
       }
+    } else if (audioContext && audioContext.state === 'running') {
+       // Ensure soundtrack is started even if context was already running (edge case)
+       if (!soundtrackManager.isSoundtrackPlaying) {
+          try {
+            await soundtrackManager.start();
+          } catch (e) {
+             console.error("Failed to start soundtrack (context running):", e);
+          }
+       }
     }
   }, [audioContext]);
 
@@ -133,7 +153,8 @@ export function useSoundManager(): SoundManager {
 
   useEffect(() => {
     if (gainNodeRef.current) {
-      gainNodeRef.current.gain.setValueAtTime(volume, audioContext?.currentTime ?? 0);
+      // Apply scaling factor to the volume
+      gainNodeRef.current.gain.setValueAtTime(volume * SFX_VOLUME_SCALING, audioContext?.currentTime ?? 0);
     }
     localStorage.setItem(LOCAL_STORAGE_VOLUME_KEY, volume.toString());
   }, [volume, audioContext]);
@@ -274,6 +295,30 @@ export function useSoundManager(): SoundManager {
     setVolumeState(clampedVolume);
   }, []);
 
+  // --- Soundtrack Integration ---
+  const [soundtrackVolume, setSoundtrackVolumeState] = useState<number>(() => {
+    const stored = localStorage.getItem('pongo-soundtrack-volume');
+    return stored ? parseFloat(stored) : 0.5;
+  });
 
-  return { playSound, setVolume, volume, isLoading, error, resumeContext };
+  useEffect(() => {
+    soundtrackManager.setVolume(soundtrackVolume);
+    localStorage.setItem('pongo-soundtrack-volume', soundtrackVolume.toString());
+  }, [soundtrackVolume]);
+
+  const setSoundtrackVolume = useCallback((newVolume: number) => {
+    const clamped = Math.max(0, Math.min(1, newVolume));
+    setSoundtrackVolumeState(clamped);
+  }, []);
+
+  return { 
+    playSound, 
+    setVolume, 
+    volume, 
+    isLoading, 
+    error, 
+    resumeContext,
+    soundtrackVolume,
+    setSoundtrackVolume
+  };
 }

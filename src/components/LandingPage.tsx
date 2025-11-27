@@ -83,7 +83,7 @@ const Button = styled.button<{ theme: DefaultTheme; $variant?: 'primary' | 'seco
   color: ${({ theme, $variant }) => 
     $variant === 'secondary' ? theme.colors.text : '#000'};
     
-  border: ${({ theme, $variant }) => 
+  border: ${({ $variant }) => 
     $variant === 'secondary' ? '1px solid rgba(255, 255, 255, 0.2)' : 'none'};
 
   &:hover {

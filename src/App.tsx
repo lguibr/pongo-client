@@ -160,43 +160,63 @@ const GameAreaContainer = styled.div`
   min-height: 0; /* Allows flex item to shrink below content size */
 `;
 
-function AppContent() {
+import { GameProvider, useGame } from './context/GameContext';
+import { LobbyScreen } from './components/LobbyScreen';
+
+const VolumeGroup = styled.div`
+  display: flex;
+  align-items: center;
+  margin-left: 15px;
+  &:first-child {
+    margin-left: 0;
+  }
+`;
+
+const VolumeLabel = styled.span<{ theme: DefaultTheme }>`
+  font-size: 10px;
+  margin-right: 5px;
+  color: ${({ theme }) => theme.colors.text};
+  text-transform: uppercase;
+  font-weight: bold;
+  opacity: 0.7;
+  display: none;
+  @media (min-width: 768px) {
+    display: block;
+  }
+`;
+
+interface MainLayoutProps {
+  volume: number;
+  setVolume: (volume: number) => void;
+  soundtrackVolume: number;
+  setSoundtrackVolume: (volume: number) => void;
+  resumeContext: () => void;
+}
+
+function MainLayout({ volume, setVolume, soundtrackVolume, setSoundtrackVolume, resumeContext }: MainLayoutProps) {
   const { width } = useWindowSize();
   const isMobileView = useMemo(() => width < 768, [width]);
   const [animateLogo, setAnimateLogo] = useState(false);
-
   const navigate = useNavigate();
-
-  const { volume, setVolume, isLoading: soundsLoading, error: soundError, resumeContext } = useSoundManager();
+  const { disconnect } = useGame();
   const previousVolumeRef = useRef(volume);
-
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      setAnimateLogo(true);
-      setTimeout(() => setAnimateLogo(false), 500);
-    }, 15000);
-    return () => clearInterval(intervalId);
-  }, []);
+  const previousSoundtrackVolumeRef = useRef(soundtrackVolume);
 
   const handleLogoClick = () => {
+      disconnect();
       navigate('/');
       setAnimateLogo(true);
       setTimeout(() => setAnimateLogo(false), 500);
   };
 
-  useEffect(() => {
-    if (soundsLoading) {
-      console.log('Sounds loading...');
-    } else if (soundError) {
-      console.error('Sound loading error:', soundError);
-    } else {
-      console.log('Sounds loaded successfully.');
-    }
-  }, [soundsLoading, soundError]);
-
   const handleVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(event.target.value);
     setVolume(newVolume);
+  };
+
+  const handleSoundtrackVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(event.target.value);
+    setSoundtrackVolume(newVolume);
   };
 
   const handleIconClick = () => {
@@ -209,76 +229,147 @@ function AppContent() {
     }
   };
 
-  const renderVolumeIcon = () => {
+  const handleSoundtrackIconClick = () => {
+    resumeContext();
+    if (soundtrackVolume > 0) {
+      previousSoundtrackVolumeRef.current = soundtrackVolume;
+      setSoundtrackVolume(0);
+    } else {
+      setSoundtrackVolume(previousSoundtrackVolumeRef.current > 0 ? previousSoundtrackVolumeRef.current : 0.5);
+    }
+  };
+
+  const renderVolumeIcon = (vol: number) => {
     const iconSize = 22;
     const iconColor = theme.colors.text;
-    if (volume === 0) return <VolumeMuteIcon size={iconSize} color={iconColor} />;
-    if (volume < 0.33) return <VolumeLowIcon size={iconSize} color={iconColor} />;
-    if (volume < 0.66) return <VolumeMediumIcon size={iconSize} color={iconColor} />;
+    if (vol === 0) return <VolumeMuteIcon size={iconSize} color={iconColor} />;
+    if (vol < 0.33) return <VolumeLowIcon size={iconSize} color={iconColor} />;
+    if (vol < 0.66) return <VolumeMediumIcon size={iconSize} color={iconColor} />;
     return <VolumeHighIcon size={iconSize} color={iconColor} />;
   };
 
-  // Simple navigation handlers for LandingPage
-  const handleCreateRoom = useCallback(() => {
-    // Navigate to create route, let GameRoom handle the rest
-    navigate('/room/create');
+  const handleCreateRoom = useCallback((isPublic: boolean) => {
+    navigate('/lobby/create', { state: { isPublic } });
   }, [navigate]);
 
   const handleJoinRoom = useCallback((code: string) => {
-    navigate(`/room/${code}`);
+    navigate(`/lobby/${code}`);
   }, [navigate]);
 
   const handleQuickPlay = useCallback(() => {
-    navigate('/room/quickplay');
+    navigate('/lobby/quickplay');
   }, [navigate]);
 
   return (
-    <AppContainer theme={theme}>
-      <Header theme={theme}>
-        <div style={{ width: isMobileView ? '30px' : '130px', flexShrink: 0 }} />
-        <LogoContainer onClick={handleLogoClick} style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
-          <Logo src="/bitmap.png" alt="PonGo Logo" $animate={animateLogo} />
-          <Title theme={theme}>PonGo</Title>
-        </LogoContainer>
-        <VolumeControlContainer>
-          <VolumeIconContainer onClick={handleIconClick} theme={theme} title={volume === 0 ? "Unmute" : "Mute"}>
-            {renderVolumeIcon()}
-          </VolumeIconContainer>
-          {!isMobileView && (
-            <VolumeSliderInput
-              theme={theme}
-              min="0"
-              max="1"
-              step="0.01"
-              value={volume}
-              onChange={handleVolumeChange}
-              title={`Volume: ${Math.round(volume * 100)}%`}
-            />
-          )}
-        </VolumeControlContainer>
-      </Header>
+      <AppContainer theme={theme}>
+        <Header theme={theme}>
+          <div style={{ width: isMobileView ? '30px' : '130px', flexShrink: 0 }} />
+          <LogoContainer onClick={handleLogoClick} style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
+            <Logo src="/bitmap.png" alt="PonGo Logo" $animate={animateLogo} />
+            <Title theme={theme}>PonGo</Title>
+          </LogoContainer>
+          <VolumeControlContainer>
+            {/* Soundtrack Control */}
+            <VolumeGroup>
+              <VolumeLabel theme={theme}>Music</VolumeLabel>
+              <VolumeIconContainer onClick={handleSoundtrackIconClick} theme={theme} title={soundtrackVolume === 0 ? "Unmute Music" : "Mute Music"}>
+                {renderVolumeIcon(soundtrackVolume)}
+              </VolumeIconContainer>
+              {!isMobileView && (
+                <VolumeSliderInput
+                  theme={theme}
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={soundtrackVolume}
+                  onChange={handleSoundtrackVolumeChange}
+                  title={`Music Volume: ${Math.round(soundtrackVolume * 100)}%`}
+                />
+              )}
+            </VolumeGroup>
 
-      <GameAreaContainer>
-        <Routes>
-          <Route path="/" element={
-            <LandingPage 
-              onCreateRoom={handleCreateRoom}
-              onJoinRoom={handleJoinRoom}
-              onQuickPlay={handleQuickPlay}
-            />
-          } />
-          <Route path="/room/:code" element={
-            <GameRoom theme={theme} volume={volume} resumeContext={resumeContext} />
-          } />
-          <Route path="/room/create" element={
-            <GameRoom theme={theme} volume={volume} resumeContext={resumeContext} createRoom={true} />
-          } />
-          <Route path="/room/quickplay" element={
-            <GameRoom theme={theme} volume={volume} resumeContext={resumeContext} quickPlay={true} />
-          } />
-        </Routes>
-      </GameAreaContainer>
-    </AppContainer>
+            {/* SFX Control */}
+            <VolumeGroup>
+              <VolumeLabel theme={theme}>SFX</VolumeLabel>
+              <VolumeIconContainer onClick={handleIconClick} theme={theme} title={volume === 0 ? "Unmute SFX" : "Mute SFX"}>
+                {renderVolumeIcon(volume)}
+              </VolumeIconContainer>
+              {!isMobileView && (
+                <VolumeSliderInput
+                  theme={theme}
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  title={`SFX Volume: ${Math.round(volume * 100)}%`}
+                />
+              )}
+            </VolumeGroup>
+          </VolumeControlContainer>
+        </Header>
+
+        <GameAreaContainer>
+          <Routes>
+            <Route path="/" element={
+              <LandingPage 
+                onCreateRoom={handleCreateRoom}
+                onJoinRoom={handleJoinRoom}
+                onQuickPlay={handleQuickPlay}
+              />
+            } />
+            <Route path="/lobby/create" element={
+              <LobbyScreen theme={theme} createRoom={true} />
+            } />
+            <Route path="/lobby/quickplay" element={
+              <LobbyScreen theme={theme} quickPlay={true} />
+            } />
+            <Route path="/lobby/:code" element={
+              <LobbyScreen theme={theme} />
+            } />
+            <Route path="/game/:code" element={
+              <GameRoom theme={theme} volume={volume} resumeContext={resumeContext} />
+            } />
+            <Route path="/room/:code" element={
+              <GameRoom theme={theme} volume={volume} resumeContext={resumeContext} />
+            } />
+          </Routes>
+        </GameAreaContainer>
+      </AppContainer>
+  );
+}
+
+function AppContent() {
+  const { 
+    volume, 
+    setVolume, 
+    soundtrackVolume, 
+    setSoundtrackVolume, 
+    isLoading: soundsLoading, 
+    error: soundError, 
+    resumeContext 
+  } = useSoundManager();
+
+  useEffect(() => {
+    if (soundsLoading) {
+      console.log('Sounds loading...');
+    } else if (soundError) {
+      console.error('Sound loading error:', soundError);
+    } else {
+      console.log('Sounds loaded successfully.');
+    }
+  }, [soundsLoading, soundError]);
+
+  return (
+    <GameProvider volume={volume}>
+      <MainLayout 
+        volume={volume} 
+        setVolume={setVolume} 
+        soundtrackVolume={soundtrackVolume}
+        setSoundtrackVolume={setSoundtrackVolume}
+        resumeContext={resumeContext} 
+      />
+    </GameProvider>
   );
 }
 

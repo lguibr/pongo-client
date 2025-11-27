@@ -50,3 +50,13 @@ export const getPaddleColorByPlayerIndex = (playerIndex: number): string => {
   );
   return FALLBACK_COLOR;
 };
+
+/**
+ * Gets the display name for a player based on their index (color).
+ * @param index The player index.
+ * @returns The color name (Blue, Green, Yellow, Red).
+ */
+export const getPlayerColorName = (index: number): string => {
+  const names = ['Blue', 'Green', 'Yellow', 'Red'];
+  return names[index % names.length];
+};

@@ -99,6 +99,7 @@ export interface RoomJoinedResponse {
   success: boolean;
   roomPID: string;
   code?: string; // Optional because it might not be present in failure cases or older backend versions
+  phase?: 'lobby' | 'countingDown' | 'playing';
   reason?: string;
 }
 
@@ -108,6 +109,7 @@ export interface RoomJoinedResponse {
 export interface PlayerAssignmentMessage {
   messageType: 'playerAssignment';
   playerIndex: number;
+  phase: 'lobby' | 'countingDown' | 'playing';
 }
 
 // --- Initial State Message Structures (Modified) ---
@@ -238,7 +240,11 @@ export type AtomicUpdate =
   | BallSpawned
   | BallRemoved
   | PlayerJoined
-  | PlayerLeft;
+  | PlayerLeft
+  | LobbyStateUpdate
+  | GameStartCountdown
+  | GameStarted
+  | GameStartCancelled;
 
 // --- Type Guards for Incoming Messages ---
 
@@ -300,9 +306,75 @@ export function isPlayerLeft(update: unknown): update is PlayerLeft {
 }
 
 
+// --- Lobby System Messages ---
+
+export interface LobbyPlayerState {
+  index: number;
+  isReady: boolean;
+}
+
+export interface LobbyStateUpdate {
+  messageType: 'lobbyState';
+  players: LobbyPlayerState[];
+}
+
+export interface GameStartCountdown {
+  messageType: 'gameStartCountdown';
+  seconds: number;
+}
+
+export interface GameStarted {
+  messageType: 'gameStarted';
+}
+
+export interface GameStartCancelled {
+  messageType: 'gameStartCancelled';
+  reason: string;
+}
+
+// --- Type Guards for Lobby Messages ---
+
+export function isLobbyStateUpdate(data: unknown): data is LobbyStateUpdate {
+  return typeof data === 'object' && data !== null && (data as LobbyStateUpdate).messageType === 'lobbyState';
+}
+
+export function isGameStartCountdown(data: unknown): data is GameStartCountdown {
+  return typeof data === 'object' && data !== null && (data as GameStartCountdown).messageType === 'gameStartCountdown';
+}
+
+export function isGameStarted(data: unknown): data is GameStarted {
+  return typeof data === 'object' && data !== null && (data as GameStarted).messageType === 'gameStarted';
+}
+
+export function isGameStartCancelled(data: unknown): data is GameStartCancelled {
+  return typeof data === 'object' && data !== null && (data as GameStartCancelled).messageType === 'gameStartCancelled';
+}
+
+export function isRoomJoinedResponse(data: unknown): data is RoomJoinedResponse {
+  return typeof data === 'object' && data !== null && (data as RoomJoinedResponse).messageType === 'roomJoined';
+}
+
 // Union type for all possible top-level incoming messages from WebSocket
 export type IncomingMessage =
   | PlayerAssignmentMessage
   | InitialPlayersAndBallsState
   | GameOverMessage
-  | GameUpdatesBatch;
+  | GameUpdatesBatch
+  | LobbyStateUpdate
+  | GameStartCountdown
+  | GameStarted
+  | GameStartCancelled
+  | RoomJoinedResponse;
+
+export interface GameState {
+  originalPlayers: (Player | null)[];
+  originalPaddles: (Paddle | null)[];
+  originalBalls: Ball[];
+  brickStates: BrickStateUpdate[];
+  cellSize: number;
+  myPlayerIndex: number | null;
+  gameOverInfo: GameOverMessage | null;
+  phase: 'lobby' | 'countingDown' | 'playing';
+  lobbyPlayers: LobbyPlayerState[];
+  countdownSeconds: number | null;
+}

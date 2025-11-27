@@ -22,7 +22,8 @@
     "react-router-dom": "^7.9.6",
     "react-use-websocket": "^4.13.0",
     "styled-components": "^6.1.17",
-    "three": "^0.176.0"
+    "three": "^0.176.0",
+    "tone": "^15.1.22"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",

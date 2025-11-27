@@ -1,23 +1,20 @@
 // File: src/hooks/useGameState.ts
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   Player, Paddle, Ball, GameOverMessage, IncomingMessage, AtomicUpdate,
   isPlayerAssignment, isInitialPlayersAndBallsState,
   isGameOver, isGameUpdatesBatch, isFullGridUpdate, isPlayerJoined,
   isPlayerLeft, isScoreUpdate, isPaddlePositionUpdate, isBallSpawned,
-  isBallRemoved, isBallPositionUpdate, isBallOwnershipChange, BrickStateUpdate
+  isBallRemoved, isBallPositionUpdate, isBallOwnershipChange, BrickStateUpdate,
+  LobbyPlayerState, isLobbyStateUpdate, isGameStartCountdown, isGameStarted, isGameStartCancelled,
+  isRoomJoinedResponse, RoomJoinedResponse, GameState as GameStateType
 } from '../types/game';
-import { SoundEventType } from './useSoundManager';
 
-interface GameState {
-  originalPlayers: (Player | null)[];
-  originalPaddles: (Paddle | null)[];
-  originalBalls: Ball[];
-  brickStates: BrickStateUpdate[];
-  cellSize: number;
-  myPlayerIndex: number | null;
-  gameOverInfo: GameOverMessage | null;
+export interface GameState extends GameStateType {
+  resetState: () => void;
+  processMessage: (event: MessageEvent<string>) => void;
 }
+import { SoundEventType } from './useSoundManager';
 
 const getTimestamp = (): string => {
   const now = new Date();
@@ -205,7 +202,6 @@ function applyUpdates<T>(
 }
 
 export function useGameState(
-  lastMessage: MessageEvent<string> | null,
   playSound: (type: SoundEventType, index?: number) => void
 ): GameState {
   const [originalPlayers, setOriginalPlayers] = useState<(Player | null)[]>(Array(4).fill(null));
@@ -215,14 +211,24 @@ export function useGameState(
   const [cellSize, setCellSize] = useState<number>(0);
   const [myPlayerIndex, setMyPlayerIndex] = useState<number | null>(null);
   const [gameOverInfo, setGameOverInfo] = useState<GameOverMessage | null>(null);
+  const [phase, setPhase] = useState<'lobby' | 'countingDown' | 'playing'>('lobby');
+  const [lobbyPlayers, setLobbyPlayers] = useState<LobbyPlayerState[]>([]);
+  const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
+
   const isGameOverRef = useRef(false);
   const prevBrickStatesRef = useRef<BrickStateUpdate[]>([]);
 
-  useEffect(() => {
-    if (!lastMessage?.data) return;
+  // Use a ref to access the latest state in the callback without triggering re-renders of the callback itself
+  // However, for state setters, we don't need refs.
+  // But for playSound and myPlayerIndex, we might need to be careful.
+  // Actually, we can just use the state setters functional updates.
+
+  const processMessage = useCallback((event: MessageEvent<string>) => {
+    if (!event.data) return;
     try {
-      const data: IncomingMessage = JSON.parse(lastMessage.data);
+      const data: IncomingMessage = JSON.parse(event.data);
       const timestamp = getTimestamp();
+      console.log(`[${timestamp}][GameState] Received: ${data.messageType}`, data);
 
       if (isPlayerAssignment(data)) {
         console.log(`[${timestamp}][GameState] Assigning Player Index: ${data.playerIndex}`);
@@ -235,6 +241,32 @@ export function useGameState(
         setOriginalPaddles(Array(4).fill(null));
         setOriginalBalls([]);
         setCellSize(0);
+        setOriginalPaddles(Array(4).fill(null));
+        setOriginalBalls([]);
+        setCellSize(0);
+        setPhase(data.phase); // Use the phase from the message
+        setLobbyPlayers([]);
+        setCountdownSeconds(null);
+      } else if (isRoomJoinedResponse(data)) {
+        const msg = data as RoomJoinedResponse;
+        if (msg.success && msg.phase) {
+           setPhase(msg.phase);
+           console.log(`[${timestamp}][GameState] Room Joined. Phase: ${msg.phase}`);
+        }
+      } else if (isLobbyStateUpdate(data)) {
+        setLobbyPlayers(data.players);
+        // We rely on explicit phase transitions, but if we get lobby state, we are likely in lobby.
+        // However, let's not force phase change here to avoid overriding countdown.
+      } else if (isGameStartCountdown(data)) {
+        setPhase('countingDown');
+        setCountdownSeconds(data.seconds);
+      } else if (isGameStarted(data)) {
+        setPhase('playing');
+        setCountdownSeconds(null);
+      } else if (isGameStartCancelled(data)) {
+        setPhase('lobby');
+        setCountdownSeconds(null);
+        console.log(`[${timestamp}][GameState] Game Start Cancelled: ${data.reason}`);
       } else if (isInitialPlayersAndBallsState(data)) {
         console.log(`[${timestamp}][GameState] Received Initial Players/Paddles/Balls State`);
         const initialPlayers = Array(4).fill(null);
@@ -262,8 +294,46 @@ export function useGameState(
         console.log(`[${timestamp}][GameState] Received Game Over message:`, data);
         setGameOverInfo(data);
         isGameOverRef.current = true;
+        setPhase('lobby');
       } else if (isGameUpdatesBatch(data)) {
         if (isGameOverRef.current) return;
+
+        // We need the CURRENT myPlayerIndex for sound logic.
+        // Since this callback is memoized, we need to access it via ref or state.
+        // But we can't access state inside useCallback without adding it to deps.
+        // If we add it to deps, processMessage changes on every state change.
+        // This is fine if GameContext handles it correctly.
+        // But to avoid re-subscribing in useWebSocket, we want a stable callback?
+        // react-use-websocket's onMessage prop: "The callback is not memoized internally, so you should memoize it yourself."
+        // If processMessage changes, onMessage changes.
+        // Let's use a ref for myPlayerIndex to keep processMessage stable.
+        
+        // Wait, we can't easily use ref for myPlayerIndex because it's state.
+        // We can use a ref that tracks the state.
+        // Let's do that below.
+        
+        // For now, let's just use the state setter functional update which doesn't need myPlayerIndex...
+        // EXCEPT applyUpdates needs it for sound logic.
+        // So we DO need myPlayerIndex.
+        
+        // Let's assume we will add myPlayerIndex to dependency array.
+        // Handle control messages within the batch
+        data.updates.forEach(update => {
+          if (isLobbyStateUpdate(update)) {
+             setLobbyPlayers(update.players);
+             // Do NOT reset phase here. Phase is controlled by explicit messages.
+          } else if (isGameStartCountdown(update)) {
+             setPhase('countingDown');
+             setCountdownSeconds(update.seconds);
+          } else if (isGameStarted(update)) {
+             setPhase('playing');
+             setCountdownSeconds(null);
+          } else if (isGameStartCancelled(update)) {
+             setPhase('lobby');
+             setCountdownSeconds(null);
+             console.log(`[${timestamp}][GameState] Game Start Cancelled: ${update.reason}`);
+          }
+        });
 
         // Pass myPlayerIndex to the applyUpdates for balls
         setOriginalPlayers(current => applyUpdates(current, data.updates, processPlayerUpdate, playSound, myPlayerIndex));
@@ -293,7 +363,22 @@ export function useGameState(
     } catch (e) {
       console.error('Failed to parse WebSocket message:', e);
     }
-  }, [lastMessage, playSound, myPlayerIndex]); // Added myPlayerIndex to dependencies
+  }, [playSound, myPlayerIndex]); // Dependencies
+
+  const resetState = useCallback(() => {
+    setOriginalPlayers(Array(4).fill(null));
+    setOriginalPaddles(Array(4).fill(null));
+    setOriginalBalls([]);
+    setBrickStates([]);
+    setCellSize(0);
+    setMyPlayerIndex(null);
+    setGameOverInfo(null);
+    setPhase('lobby');
+    setLobbyPlayers([]);
+    setCountdownSeconds(null);
+    isGameOverRef.current = false;
+    prevBrickStatesRef.current = [];
+  }, []);
 
   return {
     originalPlayers,
@@ -303,5 +388,10 @@ export function useGameState(
     cellSize,
     myPlayerIndex,
     gameOverInfo,
+    phase,
+    lobbyPlayers,
+    countdownSeconds,
+    processMessage,
+    resetState,
   };
 }

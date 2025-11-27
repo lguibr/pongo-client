@@ -4,7 +4,7 @@ import styled, { keyframes, DefaultTheme } from 'styled-components';
 import { ReadyState } from 'react-use-websocket';
 
 // Define the type for the status prop more accurately
-type StatusProp = ReadyState | 'waiting' | 'error';
+type StatusProp = ReadyState | 'waiting' | 'error' | string;
 
 interface StatusOverlayProps {
   status: StatusProp;
@@ -30,7 +30,7 @@ const OverlayContainer = styled.div<{ theme: DefaultTheme }>`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: ${({ theme }) => theme.colors.statusOverlayBackground};
+  background-color: rgba(0, 0, 0, 0.6); /* More transparent */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -126,6 +126,9 @@ const StatusOverlay: React.FC<StatusOverlayProps> = ({ status, theme }) => {
     // No case for ReadyState.OPEN as the overlay shouldn't show then
     // No default needed
   }
+
+  // If content is null (e.g. status is 'open' or unknown), do not render the container
+  if (!content) return null;
 
   return <OverlayContainer theme={theme}>{content}</OverlayContainer>;
 };

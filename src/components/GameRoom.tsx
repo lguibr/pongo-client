@@ -1,27 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import useWebSocket, { ReadyState } from 'react-use-websocket';
 import * as THREE from 'three';
 import styled, { DefaultTheme } from 'styled-components';
 
 import R3FCanvas from './R3FCanvas';
 import StatusOverlay from './StatusOverlay';
-import { WEBSOCKET_URL } from '../utils/constants';
 import { 
   DirectionMessage, 
   Player, 
   VisualDirection, 
-  CreateRoomRequest, 
-  JoinRoomRequest, 
-  QuickPlayRequest, 
-  RoomCreatedResponse, 
-  RoomJoinedResponse 
 } from '../types/game';
 import { useInputHandler } from '../hooks/useInputHandler';
-import { useGameState } from '../hooks/useGameState';
 import { usePlayerRotation } from '../utils/rotation';
+import { getPlayerColorName } from '../utils/colors';
 import { useWindowSize } from '../hooks/useWindowSize';
-import { useSoundManager, SoundEventType } from '../hooks/useSoundManager';
+import { useGame } from '../context/GameContext';
 
 // Styled Components (Reused from App.tsx or moved here)
 const GameCanvasWrapper = styled.div`
@@ -95,6 +88,10 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
 `;
 
 const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   height: var(--controls-height);
   display: flex;
   gap: 0.5rem;
@@ -138,15 +135,77 @@ const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
   }
 `;
 
+const LobbyOverlay = styled.div<{ theme: DefaultTheme }>`
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: ${({ theme }) => theme.colors.text};
+  z-index: 40;
+  h2 { font-size: 2.5rem; margin-bottom: 2rem; color: ${({ theme }) => theme.colors.accent}; }
+  ul { list-style: none; padding: 0; width: 300px; }
+  li { 
+    display: flex; 
+    justify-content: space-between; 
+    padding: 10px; 
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    font-size: 1.2rem;
+  }
+`;
+
+const ReadyButton = styled.button<{ theme: DefaultTheme; $isReady: boolean }>`
+  padding: 15px 40px;
+  font-size: 1.5rem;
+  background-color: ${({ theme, $isReady }) => $isReady ? theme.colors.success : theme.colors.primary};
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 30px;
+  transition: transform 0.1s;
+  
+  &:hover {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
+const CountdownOverlay = styled.div<{ theme: DefaultTheme }>`
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.5);
+  z-index: 45;
+  font-size: 10rem;
+  font-weight: bold;
+  color: ${({ theme }) => theme.colors.accent};
+  text-shadow: 0 0 20px ${({ theme }) => theme.colors.accent};
+  animation: pulse 1s infinite;
+
+  @keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+`;
+
 interface GameRoomProps {
   theme: DefaultTheme;
   volume: number;
   resumeContext: () => void;
-  createRoom?: boolean;
-  quickPlay?: boolean;
+  createRoom?: boolean; // Deprecated/Unused in this refactor but kept for prop compat
+  quickPlay?: boolean; // Deprecated/Unused
 }
 
-export const GameRoom: React.FC<GameRoomProps> = ({ theme, volume, resumeContext, createRoom, quickPlay }) => {
+export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { width } = useWindowSize();
@@ -156,28 +215,8 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, volume, resumeContext
   const lastSentLogicalKeyboardDir = useRef<DirectionMessage['direction'] | null>(null);
   const [leftActive, setLeftActive] = useState(false);
   const [rightActive, setRightActive] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(true);
   
-  // Track if we have already sent the initial handshake for this mount/code
-  const hasHandshaked = useRef(false);
-
-  const { playSound, setVolume } = useSoundManager();
-
-  // Sync volume from prop to sound manager
-  useEffect(() => {
-    setVolume(volume);
-  }, [volume, setVolume]);
-
-  const handleGameSound = useCallback((type: SoundEventType, index?: number) => {
-    playSound(type, index);
-  }, [playSound]);
-
-  const { sendMessage, lastMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
-    shouldReconnect: () => true,
-    reconnectInterval: 3000,
-    filter: (msg): msg is MessageEvent<string> =>
-      typeof msg.data === 'string' && msg.data.startsWith('{'),
-  });
+  const { sendMessage, gameState, connectionStatus } = useGame();
 
   const {
     originalPlayers,
@@ -187,82 +226,24 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, volume, resumeContext
     cellSize,
     myPlayerIndex,
     gameOverInfo,
-  } = useGameState(lastMessage, handleGameSound);
-
-  // Handshake Logic
-  useEffect(() => {
-    if (readyState === ReadyState.OPEN && !hasHandshaked.current) {
-      hasHandshaked.current = true;
-      console.log("WebSocket Open. Performing handshake. Code:", code, "Create:", createRoom, "QuickPlay:", quickPlay);
-
-      if (createRoom) {
-        const req: CreateRoomRequest = { messageType: 'createRoom', isPublic: true };
-        sendMessage(JSON.stringify(req));
-      } else if (quickPlay) {
-        const req: QuickPlayRequest = { messageType: 'quickPlay' };
-        sendMessage(JSON.stringify(req));
-      } else if (code) {
-        // Join specific room
-        const req: JoinRoomRequest = { messageType: 'joinRoom', code };
-        sendMessage(JSON.stringify(req));
-      }
-    }
-  }, [readyState, code, createRoom, quickPlay, sendMessage]);
-
-  // Handle Room Responses (Navigation and Errors)
-  useEffect(() => {
-    if (lastMessage) {
-      try {
-        const data = JSON.parse(lastMessage.data);
-        if (data.messageType === 'roomCreated') {
-          const response = data as RoomCreatedResponse;
-          setIsConnecting(false);
-          // Update URL to the actual room code without reloading
-          navigate(`/room/${response.code}`, { replace: true });
-        } else if (data.messageType === 'roomJoined') {
-          const response = data as RoomJoinedResponse;
-          setIsConnecting(false);
-          if (response.success) {
-            if (response.code && response.code !== code) {
-               // Update URL if we joined via quickplay or create
-               navigate(`/room/${response.code}`, { replace: true });
-            }
-          } else {
-            alert(`Failed to join room: ${response.reason}`);
-            navigate('/');
-          }
-        }
-      } catch (e) {
-        console.error("Error parsing message:", e);
-      }
-    }
-  }, [lastMessage, navigate, code]);
+    phase,
+    lobbyPlayers,
+    countdownSeconds,
+  } = gameState;
 
   const rotationDegrees = usePlayerRotation(myPlayerIndex);
   const rotationRadians = useMemo(() => THREE.MathUtils.degToRad(rotationDegrees), [rotationDegrees]);
 
-  const connectionStatus = useMemo(() => {
-    switch (readyState) {
-      case ReadyState.CONNECTING: return ReadyState.CONNECTING;
-      case ReadyState.OPEN: return ReadyState.OPEN;
-      case ReadyState.CLOSING: return ReadyState.CLOSING;
-      case ReadyState.CLOSED: return ReadyState.CLOSED;
-      case ReadyState.UNINSTANTIATED: return ReadyState.CONNECTING;
-      default: return 'error';
-    }
-  }, [readyState]);
-
-  const isGameActive = connectionStatus === ReadyState.OPEN && !gameOverInfo;
-  const isGameReady = isGameActive && brickStates.length > 0 && cellSize > 0;
+  const isGameActive = connectionStatus === 'open' && !gameOverInfo && phase === 'playing';
 
   const displayStatus = useMemo(() => {
-    if (isConnecting) return 'waiting';
+    console.log('[GameRoom] displayStatus calc:', { connectionStatus, phase, gameOverInfo });
+    if (connectionStatus !== 'open') return 'waiting';
     if (gameOverInfo) return null;
-    if (isGameReady) return null;
-    if (connectionStatus === ReadyState.OPEN && !isGameReady) return 'waiting';
-    if (connectionStatus === ReadyState.OPEN) return null;
+    if (phase === 'lobby' || phase === 'countingDown') return null; // Should be in LobbyScreen, but if we are here, maybe just show waiting?
+    if (connectionStatus === 'open' && phase === 'playing') return null;
     return connectionStatus;
-  }, [connectionStatus, isGameReady, gameOverInfo, isConnecting]);
+  }, [connectionStatus, phase, gameOverInfo]);
 
   // Input Handling
   const sendLogicalDirectionMessage = useCallback(
@@ -320,12 +301,58 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, volume, resumeContext
     sendLogicalDirectionMessage(logicalDir, 'mobile');
   }, [mapDirection, sendLogicalDirectionMessage, isGameActive]);
 
+  const toggleReady = () => {
+    const me = lobbyPlayers.find(p => p.index === myPlayerIndex);
+    const newReadyState = !me?.isReady;
+    sendMessage(JSON.stringify({ messageType: 'playerReady', isReady: newReadyState }));
+    resumeContext(); // Ensure audio context is resumed on user interaction
+  };
+
+  const renderLobby = () => {
+    if (phase !== 'lobby') return null;
+    const me = lobbyPlayers.find(p => p.index === myPlayerIndex);
+    return (
+      <LobbyOverlay theme={theme}>
+        <h2>Lobby</h2>
+        <ul>
+          {lobbyPlayers.map(p => (
+            <li key={p.index} style={{ color: p.isReady ? theme.colors.success : theme.colors.text }}>
+              <span>{getPlayerColorName(p.index)} {p.index === myPlayerIndex ? '(You)' : ''}</span>
+              <span>{p.isReady ? 'READY' : 'WAITING'}</span>
+            </li>
+          ))}
+          {/* Show placeholders for empty slots? */}
+          {Array.from({ length: 4 - lobbyPlayers.length }).map((_, i) => (
+             <li key={`empty-${i}`} style={{ opacity: 0.5 }}>
+               <span>Waiting for player...</span>
+             </li>
+          ))}
+        </ul>
+        <ReadyButton theme={theme} $isReady={!!me?.isReady} onClick={toggleReady}>
+          {me?.isReady ? 'Ready!' : 'Click to Ready'}
+        </ReadyButton>
+        <div style={{ marginTop: '20px', fontSize: '0.9rem', opacity: 0.7 }}>
+          Room Code: {code}
+        </div>
+      </LobbyOverlay>
+    );
+  };
+
+  const renderCountdown = () => {
+    if (phase !== 'countingDown' || countdownSeconds === null) return null;
+    return (
+      <CountdownOverlay theme={theme}>
+        {countdownSeconds}
+      </CountdownOverlay>
+    );
+  };
+
   const renderGameOver = () => {
     if (!gameOverInfo) return null;
     const winnerText =
       gameOverInfo.winnerIndex === -1
         ? 'It\'s a Tie!'
-        : `Player ${gameOverInfo.winnerIndex} Wins!`;
+        : `${getPlayerColorName(gameOverInfo.winnerIndex)} Wins!`;
     return (
       <GameOverOverlay theme={theme}>
         <h2>Game Over!</h2>
@@ -335,7 +362,7 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, volume, resumeContext
         <ul>
           {gameOverInfo.finalScores.map((score, index) => (
             <li key={index}>
-              Player {index}: {score}
+              {getPlayerColorName(index)}: {score}
             </li>
           ))}
         </ul>
@@ -360,25 +387,28 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, volume, resumeContext
   return (
     <>
       <GameCanvasWrapper>
-        {(isGameReady || displayStatus === 'waiting') && (
+        {connectionStatus === 'open' && (
           <R3FCanvas
             brickStates={brickStates}
             cellSize={cellSize}
             paddles={originalPaddles}
             balls={originalBalls}
             rotationAngle={rotationRadians}
-            wsStatus={connectionStatus === ReadyState.OPEN ? 'open' : 'closed'}
+            wsStatus={connectionStatus === 'open' ? 'open' : 'closed'}
           />
         )}
       </GameCanvasWrapper>
       
+      {renderLobby()}
+      {renderCountdown()}
+
       {displayStatus && (
         <StatusOverlay status={displayStatus} theme={theme} />
       )}
       
       {renderGameOver()}
       
-      {code && code !== 'create' && code !== 'quickplay' && !isGameReady && (
+      {code && phase === 'playing' && (
           <div style={{
             position: 'absolute',
             top: '10px',
@@ -396,17 +426,17 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, volume, resumeContext
       )}
 
       <ScoreBoard theme={theme}>
-        {myPlayerIndex !== null && <div>You: P{myPlayerIndex}</div>}
+        {myPlayerIndex !== null && <div>{getPlayerColorName(myPlayerIndex)} (You)</div>}
         {originalPlayers
           .filter((p): p is Player => p !== null)
           .map((p) => (
             <div key={p.index}>
-              P{p.index}: {String(p.score).padStart(3, ' ')}
+              {getPlayerColorName(p.index)}: {String(p.score).padStart(3, ' ')}
             </div>
           ))}
       </ScoreBoard>
 
-      {isMobileView && (
+      {isMobileView && phase === 'playing' && (
         <MobileControlsContainer theme={theme}>
           <ControlButton
             theme={theme}

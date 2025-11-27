@@ -9,6 +9,8 @@ const theme = {
     accent: '#7E85FF',
     accentGlow: '#7E85FF',
     brickSheenAccent: '#9FA6FF',
+    success: '#34A853',
+    primary: '#4285F4',
     connectionStatus: {
       connecting: '#FBBC05',
       open: '#34A853',
