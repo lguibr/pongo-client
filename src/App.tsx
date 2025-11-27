@@ -1,8 +1,9 @@
 import { SpeedInsights } from "@vercel/speed-insights/react"
 import { Analytics } from "@vercel/analytics/react"
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { useNavigate, Routes, Route } from 'react-router-dom';
-import styled, { DefaultTheme, ThemeProvider, keyframes } from 'styled-components';
+import { useCallback, useMemo, useRef, useEffect } from 'react';
+import { useNavigate, Routes, Route, useLocation } from 'react-router-dom';
+import styled, { DefaultTheme, ThemeProvider } from 'styled-components';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // Keep if needed for global constants, but unused here? No, used in GameRoom. Not here.
 // Actually App.tsx doesn't use WEBSOCKET_URL anymore.
@@ -11,21 +12,9 @@ import { useWindowSize } from './hooks/useWindowSize';
 import theme from './styles/theme';
 import { useSoundManager } from './hooks/useSoundManager';
 
-// Import SVG Icons
-import VolumeHighIcon from './components/icons/VolumeHighIcon';
-import VolumeMediumIcon from './components/icons/VolumeMediumIcon';
-import VolumeLowIcon from './components/icons/VolumeLowIcon';
-import VolumeMuteIcon from './components/icons/VolumeMuteIcon';
-
+import { Music, Gamepad2, Home } from 'lucide-react';
 import { LandingPage } from './components/LandingPage';
 import { GameRoom } from './components/GameRoom';
-
-// --- Keyframes for Animations ---
-const logoShakeAnimation = keyframes`
-  0%, 100% { transform: rotate(0deg); }
-  10%, 30%, 50%, 70%, 90% { transform: rotate(-2deg); }
-  20%, 40%, 60%, 80% { transform: rotate(2deg); }
-`;
 
 // --- Styled Components ---
 const AppContainer = styled.div<{ theme: DefaultTheme }>`
@@ -53,34 +42,7 @@ const Header = styled.header<{ theme: DefaultTheme }>`
   background-color: ${({ theme }) => theme.colors.background}; /* Ensure header has bg */
 `;
 
-const LogoContainer = styled.div`
-  display: flex;
-  align-items: center;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  pointer-events: none; 
-  & > * {
-    pointer-events: auto; 
-  }
-`;
-
-const Logo = styled.img<{ $animate: boolean }>`
-  height: calc(var(--header-height) * 0.5); /* Scale logo with header */
-  max-height: 30px; /* Max size */
-  margin-right: 10px;
-  animation: ${({ $animate }) => ($animate ? logoShakeAnimation : 'none')} 0.5s ease-in-out;
-`;
-
-const Title = styled.h1<{ theme: DefaultTheme }>`
-  font-size: ${({ theme }) => theme.fonts.sizes.titleMobile}; 
-  @media (min-width: 768px) {
-    font-size: ${({ theme }) => theme.fonts.sizes.title};
-  }
-  font-weight: 600;
-  color: ${({ theme }) => theme.colors.text};
-  text-shadow: 0 0 5px ${({ theme }) => theme.colors.accentGlow};
-`;
+// LogoContainer and Logo removed
 
 const VolumeControlContainer = styled.div`
   display: flex;
@@ -172,18 +134,7 @@ const VolumeGroup = styled.div`
   }
 `;
 
-const VolumeLabel = styled.span<{ theme: DefaultTheme }>`
-  font-size: 10px;
-  margin-right: 5px;
-  color: ${({ theme }) => theme.colors.text};
-  text-transform: uppercase;
-  font-weight: bold;
-  opacity: 0.7;
-  display: none;
-  @media (min-width: 768px) {
-    display: block;
-  }
-`;
+
 
 interface MainLayoutProps {
   volume: number;
@@ -196,18 +147,34 @@ interface MainLayoutProps {
 function MainLayout({ volume, setVolume, soundtrackVolume, setSoundtrackVolume, resumeContext }: MainLayoutProps) {
   const { width } = useWindowSize();
   const isMobileView = useMemo(() => width < 768, [width]);
-  const [animateLogo, setAnimateLogo] = useState(false);
   const navigate = useNavigate();
-  const { disconnect } = useGame();
+  const location = useLocation();
+
+  const { disconnect, connect } = useGame();
+  
   const previousVolumeRef = useRef(volume);
   const previousSoundtrackVolumeRef = useRef(soundtrackVolume);
 
-  const handleLogoClick = () => {
+  const handleHomeClick = useCallback(() => {
+    disconnect();
+    navigate('/');
+  }, [disconnect, navigate]);
+
+  // Centralized Connection Logic
+  useEffect(() => {
+    console.log(`[App] Route changed to: ${location.pathname}`);
+    if (location.pathname === '/') {
+      console.log('[App] Disconnecting (Home Route)');
       disconnect();
-      navigate('/');
-      setAnimateLogo(true);
-      setTimeout(() => setAnimateLogo(false), 500);
-  };
+    } else if (
+      location.pathname.startsWith('/lobby') || 
+      location.pathname.startsWith('/game') || 
+      location.pathname.startsWith('/room')
+    ) {
+      console.log('[App] Connecting (Game/Lobby Route)');
+      connect();
+    }
+  }, [location.pathname, disconnect, connect]);
 
   const handleVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(event.target.value);
@@ -239,15 +206,6 @@ function MainLayout({ volume, setVolume, soundtrackVolume, setSoundtrackVolume, 
     }
   };
 
-  const renderVolumeIcon = (vol: number) => {
-    const iconSize = 22;
-    const iconColor = theme.colors.text;
-    if (vol === 0) return <VolumeMuteIcon size={iconSize} color={iconColor} />;
-    if (vol < 0.33) return <VolumeLowIcon size={iconSize} color={iconColor} />;
-    if (vol < 0.66) return <VolumeMediumIcon size={iconSize} color={iconColor} />;
-    return <VolumeHighIcon size={iconSize} color={iconColor} />;
-  };
-
   const handleCreateRoom = useCallback((isPublic: boolean) => {
     navigate('/lobby/create', { state: { isPublic } });
   }, [navigate]);
@@ -261,19 +219,25 @@ function MainLayout({ volume, setVolume, soundtrackVolume, setSoundtrackVolume, 
   }, [navigate]);
 
   return (
+    <ErrorBoundary>
       <AppContainer theme={theme}>
         <Header theme={theme}>
-          <div style={{ width: isMobileView ? '30px' : '130px', flexShrink: 0 }} />
-          <LogoContainer onClick={handleLogoClick} style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
-            <Logo src="/bitmap.png" alt="PonGo Logo" $animate={animateLogo} />
-            <Title theme={theme}>PonGo</Title>
-          </LogoContainer>
+          <div style={{ width: isMobileView ? '30px' : '130px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+             <VolumeIconContainer onClick={handleHomeClick} theme={theme} title="Back to Home">
+                <Home size={24} />
+             </VolumeIconContainer>
+          </div>
+          {/* Logo removed from header */}
           <VolumeControlContainer>
             {/* Soundtrack Control */}
             <VolumeGroup>
-              <VolumeLabel theme={theme}>Music</VolumeLabel>
-              <VolumeIconContainer onClick={handleSoundtrackIconClick} theme={theme} title={soundtrackVolume === 0 ? "Unmute Music" : "Mute Music"}>
-                {renderVolumeIcon(soundtrackVolume)}
+              <VolumeIconContainer 
+                onClick={handleSoundtrackIconClick} 
+                theme={theme} 
+                title={soundtrackVolume === 0 ? "Unmute Music" : "Mute Music"}
+                style={{ opacity: soundtrackVolume === 0 ? 0.5 : 1 }}
+              >
+                <Music size={24} />
               </VolumeIconContainer>
               {!isMobileView && (
                 <VolumeSliderInput
@@ -290,9 +254,13 @@ function MainLayout({ volume, setVolume, soundtrackVolume, setSoundtrackVolume, 
 
             {/* SFX Control */}
             <VolumeGroup>
-              <VolumeLabel theme={theme}>SFX</VolumeLabel>
-              <VolumeIconContainer onClick={handleIconClick} theme={theme} title={volume === 0 ? "Unmute SFX" : "Mute SFX"}>
-                {renderVolumeIcon(volume)}
+              <VolumeIconContainer 
+                onClick={handleIconClick} 
+                theme={theme} 
+                title={volume === 0 ? "Unmute SFX" : "Mute SFX"}
+                style={{ opacity: volume === 0 ? 0.5 : 1 }}
+              >
+                 <Gamepad2 size={24} />
               </VolumeIconContainer>
               {!isMobileView && (
                 <VolumeSliderInput
@@ -336,6 +304,7 @@ function MainLayout({ volume, setVolume, soundtrackVolume, setSoundtrackVolume, 
           </Routes>
         </GameAreaContainer>
       </AppContainer>
+    </ErrorBoundary>
   );
 }
 

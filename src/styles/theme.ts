@@ -3,76 +3,101 @@
 
 const theme = {
   colors: {
-    background: '#121212',
+    background: '#09090b', // Zinc 950
+    foreground: '#fafafa', // Zinc 50
+    
+    card: '#09090b',
+    cardForeground: '#fafafa',
+    
+    popover: '#09090b',
+    popoverForeground: '#fafafa',
+    
+    primary: '#3b82f6', // Blue 500 (keeping the game's blue identity but refined)
+    primaryForeground: '#ffffff',
+    
+    secondary: '#27272a', // Zinc 800
+    secondaryForeground: '#fafafa',
+    
+    muted: '#27272a',
+    mutedForeground: '#a1a1aa', // Zinc 400
+    
+    accent: '#27272a',
+    accentForeground: '#fafafa',
+    
+    destructive: '#ef4444', // Red 500
+    destructiveForeground: '#fafafa',
+    
+    border: '#27272a',
+    input: '#27272a',
+    ring: '#3b82f6',
+    
+    // Game specific
     text: '#E0E0E0',
     textDim: '#BDBDBD',
-    accent: '#7E85FF',
     accentGlow: '#7E85FF',
     brickSheenAccent: '#9FA6FF',
-    success: '#34A853',
-    primary: '#4285F4',
+    success: '#22c55e', // Green 500
     connectionStatus: {
-      connecting: '#FBBC05',
-      open: '#34A853',
-      closed: '#EA4335',
-      error: '#DB4437',
+      connecting: '#eab308', // Yellow 500
+      open: '#22c55e',
+      closed: '#ef4444',
+      error: '#ef4444',
     },
-    player0: '#4285F4',
-    player1: '#34A853',
-    player2: '#FBBC05',
-    player3: '#EA4335',
+    player0: '#3b82f6', // Blue
+    player1: '#22c55e', // Green
+    player2: '#eab308', // Yellow
+    player3: '#ef4444', // Red
     unownedBall: '#BDBDBD',
     ballTrail: 'rgba(200, 200, 220, 0.5)',
     brickLife: [
-      '#2196F3',
-      '#4CAF50',
-      '#FFC107',
-      '#E91E63',
-      '#FF5722',
-      '#F44336',
+      '#3b82f6',
+      '#22c55e',
+      '#eab308',
+      '#ec4899', // Pink
+      '#f97316', // Orange
+      '#ef4444',
     ],
     brickBorder: '#424242',
     brickShadow: 'rgba(0, 0, 0, 0.2)',
     brickLifeText: '#FFFFFF',
-    scoreboardBackground: 'rgba(40, 40, 40, 0.9)',
-    scoreboardBorder: 'rgba(100, 100, 150, 0.2)',
-    statusMessageBackground: 'rgba(20, 20, 20, 0.85)',
-    boundaryWall: '#28282D',
-    boundaryWallEmissive: '#28282D',
-    mobileButtonBackground: 'rgba(60, 60, 65, 0.85)',
-    mobileButtonBackgroundActive: 'rgba(80, 80, 85, 0.95)',
-    mobileButtonBorder: 'rgba(120, 120, 170, 0.25)',
-    mobileButtonSymbol: '#D0D0D0',
-    statusOverlayBackground: 'rgba(10, 10, 15, 0.9)',
-    statusOverlayText: '#E0E0E0',
-    statusOverlayConnecting: '#FBBC05',
-    statusOverlayWaiting: '#4285F4',
-    statusOverlayClosed: '#EA4335',
-    statusOverlayError: '#DB4437',
-    defaultParticle: '#BDBDBD',
-    volumeSliderTrack: '#555',
-    volumeSliderThumb: '#E0E0E0',
-    volumeSliderThumbBorder: '#333',
-    volumeSliderThumbHover: '#FFFFFF',
+    scoreboardBackground: 'rgba(9, 9, 11, 0.9)',
+    scoreboardBorder: 'rgba(39, 39, 42, 0.5)',
+    statusMessageBackground: 'rgba(9, 9, 11, 0.9)',
+    boundaryWall: '#27272a',
+    boundaryWallEmissive: '#27272a',
+    mobileButtonBackground: 'rgba(39, 39, 42, 0.9)',
+    mobileButtonBackgroundActive: 'rgba(63, 63, 70, 0.9)',
+    mobileButtonBorder: 'rgba(63, 63, 70, 0.5)',
+    mobileButtonSymbol: '#fafafa',
+    statusOverlayBackground: 'rgba(9, 9, 11, 0.95)',
+    statusOverlayText: '#fafafa',
+    statusOverlayConnecting: '#eab308',
+    statusOverlayWaiting: '#3b82f6',
+    statusOverlayClosed: '#ef4444',
+    statusOverlayError: '#ef4444',
+    defaultParticle: '#a1a1aa',
+    volumeSliderTrack: '#27272a',
+    volumeSliderThumb: '#fafafa',
+    volumeSliderThumbBorder: '#09090b',
+    volumeSliderThumbHover: '#ffffff',
   },
   fonts: {
-    primary:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-    monospace: "'Consolas', 'Menlo', 'Courier New', Courier, monospace",
+    primary: '"VT323", monospace',
+    monospace: '"VT323", monospace',
     sizes: {
-      title: '1.8em',
-      titleMobile: '1.5em', // Added for smaller screens
-      status: '1.8em',
-      score: '1.4em',
-      default: '1em',
-      mobileButtonSymbol: '2.5em',
-      mobileScore: '0.8em',
+      title: '3.5rem',
+      subtitle: '2rem',
+      body: '1.5rem',
+      caption: '1.2rem',
+      score: '3rem',
+      mobileScore: '2rem',
+      mobileButtonSymbol: '2.5rem',
     },
   },
   sizes: {
     headerHeight: 'var(--header-height)', // Or your fixed value like '60px'
     minScreenPadding: '.25rem', // Keep this for internal padding of GameAreaContainer
-    borderRadius: '8px',
+    borderRadius: '4px', // Retro feel usually implies sharper corners
     brickBorderRadius: '12px',
     boundaryWallThickness: 10,
     boundaryWallDepth: 16,

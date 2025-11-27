@@ -41,7 +41,7 @@ const OverlayContainer = styled.div<{ theme: DefaultTheme }>`
   box-shadow: ${({ theme }) => theme.shadows.statusOverlay};
   border-radius: ${({ theme }) => theme.sizes.borderRadius}; /* Optional rounding */
   color: ${({ theme }) => theme.colors.statusOverlayText};
-  font-size: ${({ theme }) => theme.fonts.sizes.status};
+  font-size: ${({ theme }) => theme.fonts.sizes.subtitle};
   font-family: ${({ theme }) => theme.fonts.primary};
 `;
 

@@ -60,13 +60,21 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children, volume }) 
     }
   });
 
+  const { resetState } = gameState;
+
   const disconnect = useCallback(() => {
+    console.log('[GameContext] Disconnecting...');
     setShouldConnect(false);
-    gameState.resetState();
-  }, [gameState]);
-  const connect = useCallback(() => setShouldConnect(true), []);
+    resetState();
+  }, [resetState]);
+
+  const connect = useCallback(() => {
+    console.log('[GameContext] Connecting...');
+    setShouldConnect(true);
+  }, []);
 
   const connectionStatus = useMemo(() => {
+    console.log(`[GameContext] Connection Status: ${readyState}, ShouldConnect: ${shouldConnect}`);
     if (!shouldConnect) return 'closed';
     switch (readyState) {
       case ReadyState.CONNECTING: return 'connecting';

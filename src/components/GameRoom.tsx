@@ -15,8 +15,11 @@ import { usePlayerRotation } from '../utils/rotation';
 import { getPlayerColorName } from '../utils/colors';
 import { useWindowSize } from '../hooks/useWindowSize';
 import { useGame } from '../context/GameContext';
+import { Button } from './common/Button';
+import { Typography } from './common/Typography';
+import { Avatar } from './common/Avatar';
 
-// Styled Components (Reused from App.tsx or moved here)
+// Styled Components
 const GameCanvasWrapper = styled.div`
   width: 100%;
   height: 100%;
@@ -39,31 +42,22 @@ const ScoreBoard = styled.div<{ theme: DefaultTheme }>`
   position: fixed;
   top: calc(var(--header-height) + 10px);
   left: 10px;
-  padding: 8px;
-  opacity: 0.6;
+  padding: 12px;
   z-index: 20;
-  background: ${({ theme }) => theme.colors.scoreboardBackground};
+  background: ${({ theme }) => theme.colors.card}cc;
+  backdrop-filter: blur(4px);
   border-radius: ${({ theme }) => theme.sizes.borderRadius};
-  border: 1px solid ${({ theme }) => theme.colors.scoreboardBorder};
-  font-size: ${({ theme }) => theme.fonts.sizes.mobileScore};
-  font-family: ${({ theme }) => theme.fonts.monospace};
-  color: ${({ theme }) => theme.colors.text};
+  border: 1px solid ${({ theme }) => theme.colors.border};
   box-shadow: ${({ theme }) => theme.shadows.scoreboard};
-  line-height: 1.5;
-  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
 
-  @media (min-width: 768px) {
-    padding: 10px 15px;
-    font-size: ${({ theme }) => theme.fonts.sizes.score};
-    opacity: 0.8;
-  }
-  
-  div {
-    margin-bottom: 5px;
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
+const ScoreItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `;
 
 const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
@@ -72,19 +66,16 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.85);
+  background-color: ${({ theme }) => theme.colors.background}f2; // 95% opacity
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  color: ${({ theme }) => theme.colors.text};
+  color: ${({ theme }) => theme.colors.foreground};
   z-index: 50;
   text-align: center;
   padding: 20px;
-  h2 { font-size: 2.5em; margin-bottom: 20px; color: ${({ theme }) => theme.colors.accent}; }
-  p { font-size: 1.2em; margin-bottom: 15px; }
-  ul { list-style: none; padding: 0; margin-top: 10px; }
-  li { margin-bottom: 5px; font-size: 1em; }
+  gap: 1.5rem;
 `;
 
 const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
@@ -94,8 +85,8 @@ const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
   right: 0;
   height: var(--controls-height);
   display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem;
+  gap: 1rem;
+  padding: 1rem;
   flex-shrink: 0;
   z-index: 30;
   user-select: none;
@@ -103,7 +94,7 @@ const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
   -webkit-tap-highlight-color: transparent;
   justify-content: space-around;
   padding-bottom: max(env(safe-area-inset-bottom, 20px), 20px);
-  background-color: ${({ theme }) => theme.colors.background};
+  background: linear-gradient(to top, ${({ theme }) => theme.colors.background}, transparent);
 `;
 
 const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
@@ -112,67 +103,20 @@ const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: ${({ theme, isActive }) => isActive ? theme.colors.mobileButtonBackgroundActive : theme.colors.mobileButtonBackground};
-  border: 1px solid ${({ theme }) => theme.colors.mobileButtonBorder};
+  background-color: ${({ theme, isActive }) => isActive ? theme.colors.primary : theme.colors.secondary};
+  border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: ${({ theme }) => theme.sizes.borderRadius};
-  color: ${({ theme }) => theme.colors.mobileButtonSymbol};
-  font-size: ${({ theme }) => theme.fonts.sizes.mobileButtonSymbol};
+  color: ${({ theme }) => theme.colors.foreground};
+  font-size: 2rem;
   font-weight: bold;
   cursor: pointer;
-  transition: background-color 0.1s ease-out, transform 0.05s ease-out;
+  transition: all 0.1s ease-out;
   outline: none;
   transform: ${({ isActive }) => isActive ? 'scale(0.98)' : 'scale(1)'};
+  box-shadow: 0 4px 0 ${({ theme }) => theme.colors.background};
 
   &:active {
-    background-color: ${({ theme }) => theme.colors.mobileButtonBackgroundActive};
     transform: scale(0.98);
-  }
-
-  &:disabled {
-    background-color: ${({ theme }) => theme.colors.mobileButtonBackground};
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`;
-
-const LobbyOverlay = styled.div<{ theme: DefaultTheme }>`
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.85);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: ${({ theme }) => theme.colors.text};
-  z-index: 40;
-  h2 { font-size: 2.5rem; margin-bottom: 2rem; color: ${({ theme }) => theme.colors.accent}; }
-  ul { list-style: none; padding: 0; width: 300px; }
-  li { 
-    display: flex; 
-    justify-content: space-between; 
-    padding: 10px; 
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-    font-size: 1.2rem;
-  }
-`;
-
-const ReadyButton = styled.button<{ theme: DefaultTheme; $isReady: boolean }>`
-  padding: 15px 40px;
-  font-size: 1.5rem;
-  background-color: ${({ theme, $isReady }) => $isReady ? theme.colors.success : theme.colors.primary};
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-top: 30px;
-  transition: transform 0.1s;
-  
-  &:hover {
-    transform: scale(1.05);
-    opacity: 0.9;
-  }
-  &:active {
-    transform: scale(0.95);
   }
 `;
 
@@ -186,8 +130,8 @@ const CountdownOverlay = styled.div<{ theme: DefaultTheme }>`
   z-index: 45;
   font-size: 10rem;
   font-weight: bold;
-  color: ${({ theme }) => theme.colors.accent};
-  text-shadow: 0 0 20px ${({ theme }) => theme.colors.accent};
+  color: ${({ theme }) => theme.colors.primary};
+  text-shadow: 0 0 20px ${({ theme }) => theme.colors.primary};
   animation: pulse 1s infinite;
 
   @keyframes pulse {
@@ -227,7 +171,6 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
     myPlayerIndex,
     gameOverInfo,
     phase,
-    lobbyPlayers,
     countdownSeconds,
   } = gameState;
 
@@ -237,10 +180,9 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
   const isGameActive = connectionStatus === 'open' && !gameOverInfo && phase === 'playing';
 
   const displayStatus = useMemo(() => {
-    console.log('[GameRoom] displayStatus calc:', { connectionStatus, phase, gameOverInfo });
     if (connectionStatus !== 'open') return 'waiting';
     if (gameOverInfo) return null;
-    if (phase === 'lobby' || phase === 'countingDown') return null; // Should be in LobbyScreen, but if we are here, maybe just show waiting?
+    if (phase === 'lobby' || phase === 'countingDown') return null;
     if (connectionStatus === 'open' && phase === 'playing') return null;
     return connectionStatus;
   }, [connectionStatus, phase, gameOverInfo]);
@@ -301,43 +243,6 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
     sendLogicalDirectionMessage(logicalDir, 'mobile');
   }, [mapDirection, sendLogicalDirectionMessage, isGameActive]);
 
-  const toggleReady = () => {
-    const me = lobbyPlayers.find(p => p.index === myPlayerIndex);
-    const newReadyState = !me?.isReady;
-    sendMessage(JSON.stringify({ messageType: 'playerReady', isReady: newReadyState }));
-    resumeContext(); // Ensure audio context is resumed on user interaction
-  };
-
-  const renderLobby = () => {
-    if (phase !== 'lobby') return null;
-    const me = lobbyPlayers.find(p => p.index === myPlayerIndex);
-    return (
-      <LobbyOverlay theme={theme}>
-        <h2>Lobby</h2>
-        <ul>
-          {lobbyPlayers.map(p => (
-            <li key={p.index} style={{ color: p.isReady ? theme.colors.success : theme.colors.text }}>
-              <span>{getPlayerColorName(p.index)} {p.index === myPlayerIndex ? '(You)' : ''}</span>
-              <span>{p.isReady ? 'READY' : 'WAITING'}</span>
-            </li>
-          ))}
-          {/* Show placeholders for empty slots? */}
-          {Array.from({ length: 4 - lobbyPlayers.length }).map((_, i) => (
-             <li key={`empty-${i}`} style={{ opacity: 0.5 }}>
-               <span>Waiting for player...</span>
-             </li>
-          ))}
-        </ul>
-        <ReadyButton theme={theme} $isReady={!!me?.isReady} onClick={toggleReady}>
-          {me?.isReady ? 'Ready!' : 'Click to Ready'}
-        </ReadyButton>
-        <div style={{ marginTop: '20px', fontSize: '0.9rem', opacity: 0.7 }}>
-          Room Code: {code}
-        </div>
-      </LobbyOverlay>
-    );
-  };
-
   const renderCountdown = () => {
     if (phase !== 'countingDown' || countdownSeconds === null) return null;
     return (
@@ -355,31 +260,26 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
         : `${getPlayerColorName(gameOverInfo.winnerIndex)} Wins!`;
     return (
       <GameOverOverlay theme={theme}>
-        <h2>Game Over!</h2>
-        <p>{winnerText}</p>
-        <p>Reason: {gameOverInfo.reason}</p>
-        <p>Final Scores:</p>
-        <ul>
+        <Typography variant="h1" style={{ color: theme.colors.primary }}>Game Over!</Typography>
+        <Typography variant="h2">{winnerText}</Typography>
+        <Typography variant="body">Reason: {gameOverInfo.reason}</Typography>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '300px' }}>
+          <Typography variant="h3" align="center">Final Scores</Typography>
           {gameOverInfo.finalScores.map((score, index) => (
-            <li key={index}>
-              {getPlayerColorName(index)}: {score}
-            </li>
+            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: theme.colors.muted, borderRadius: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Avatar playerIndex={index} size="sm" />
+                <Typography>{getPlayerColorName(index)}</Typography>
+              </div>
+              <Typography style={{ fontWeight: 'bold' }}>{score}</Typography>
+            </div>
           ))}
-        </ul>
-        <button 
-          onClick={() => navigate('/')}
-          style={{
-            marginTop: '20px',
-            padding: '10px 20px',
-            fontSize: '1.2em',
-            cursor: 'pointer',
-            backgroundColor: theme.colors.accent,
-            border: 'none',
-            borderRadius: '5px'
-          }}
-        >
+        </div>
+
+        <Button onClick={() => navigate('/')} size="lg" style={{ marginTop: '20px' }}>
           Back to Menu
-        </button>
+        </Button>
       </GameOverOverlay>
     );
   };
@@ -399,7 +299,6 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
         )}
       </GameCanvasWrapper>
       
-      {renderLobby()}
       {renderCountdown()}
 
       {displayStatus && (
@@ -414,25 +313,39 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
             top: '10px',
             left: '50%',
             transform: 'translateX(-50%)',
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            padding: '10px 20px',
-            borderRadius: '10px',
-            color: 'white',
-            fontSize: '1.2rem',
-            zIndex: 100
+            backgroundColor: theme.colors.card,
+            padding: '8px 16px',
+            borderRadius: '20px',
+            border: `1px solid ${theme.colors.border}`,
+            color: theme.colors.foreground,
+            fontSize: '1rem',
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
           }}>
-            Room Code: <strong>{code}</strong>
+            <span style={{ opacity: 0.7 }}>Room Code:</span>
+            <span style={{ fontWeight: 'bold', letterSpacing: '0.05em' }}>{code}</span>
           </div>
       )}
 
       <ScoreBoard theme={theme}>
-        {myPlayerIndex !== null && <div>{getPlayerColorName(myPlayerIndex)} (You)</div>}
+        {myPlayerIndex !== null && (
+          <ScoreItem>
+            <Avatar playerIndex={myPlayerIndex} size="sm" />
+            <Typography variant="caption" style={{ fontWeight: 'bold' }}>You</Typography>
+          </ScoreItem>
+        )}
         {originalPlayers
           .filter((p): p is Player => p !== null)
           .map((p) => (
-            <div key={p.index}>
-              {getPlayerColorName(p.index)}: {String(p.score).padStart(3, ' ')}
-            </div>
+            <ScoreItem key={p.index}>
+              <Avatar playerIndex={p.index} size="sm" />
+              <Typography style={{ fontFamily: theme.fonts.monospace }}>
+                {String(p.score).padStart(3, ' ')}
+              </Typography>
+            </ScoreItem>
           ))}
       </ScoreBoard>
 
