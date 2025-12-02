@@ -15,6 +15,7 @@ interface GameContextType {
   setVolume: (volume: number) => void;
   connect: () => void;
   disconnect: () => void;
+  sessionId: string;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -39,6 +40,15 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children, volume }) 
   useEffect(() => {
     setVolume(volume);
   }, [volume, setVolume]);
+
+  // Session ID Management
+  const sessionId = useMemo(() => {
+    const stored = localStorage.getItem('pongo_session_id');
+    if (stored) return stored;
+    const newId = crypto.randomUUID();
+    localStorage.setItem('pongo_session_id', newId);
+    return newId;
+  }, []);
 
   const handleGameSound = useCallback((type: SoundEventType, index?: number) => {
     console.log(`[GameContext] Playing sound: ${type}`);
@@ -95,7 +105,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children, volume }) 
     playSound,
     setVolume,
     connect,
-    disconnect
+    disconnect,
+    sessionId
   };
 
   return (

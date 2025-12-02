@@ -90,7 +90,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ theme, createRoom, qui
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { sendMessage, gameState, connectionStatus, lastMessage } = useGame();
+  const { sendMessage, gameState, connectionStatus, lastMessage, sessionId } = useGame();
   const { phase, lobbyPlayers, myPlayerIndex, countdownSeconds } = gameState;
 
   const [statusText, setStatusText] = React.useState('Initializing...');
@@ -115,24 +115,24 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ theme, createRoom, qui
         console.log('[LobbyScreen] Sending createRoom request');
         setStatusText('Creating room...');
         const isPublic = location.state?.isPublic ?? true;
-        const req: CreateRoomRequest = { messageType: 'createRoom', isPublic };
+        const req: CreateRoomRequest = { messageType: 'createRoom', isPublic, sessionId };
         sendMessage(JSON.stringify(req));
         hasSentRequest.current = true;
       } else if (quickPlay) {
         console.log('[LobbyScreen] Sending quickPlay request');
         setStatusText('Looking for a match...');
-        const req: QuickPlayRequest = { messageType: 'quickPlay' };
+        const req: QuickPlayRequest = { messageType: 'quickPlay', sessionId };
         sendMessage(JSON.stringify(req));
         hasSentRequest.current = true;
       } else if (code) {
         console.log(`[LobbyScreen] Sending joinRoom request for ${code}`);
         setStatusText(`Joining room ${code}...`);
-        const req: JoinRoomRequest = { messageType: 'joinRoom', code };
+        const req: JoinRoomRequest = { messageType: 'joinRoom', code, sessionId };
         sendMessage(JSON.stringify(req));
         hasSentRequest.current = true;
       }
     }
-  }, [connectionStatus, createRoom, quickPlay, code, sendMessage, location.state]);
+  }, [connectionStatus, createRoom, quickPlay, code, sendMessage, location.state, sessionId]);
 
   // Navigation Logic
   useEffect(() => {

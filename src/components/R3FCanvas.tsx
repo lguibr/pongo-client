@@ -1,5 +1,5 @@
-import React, { useMemo, Suspense, useEffect } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import React, { useMemo, Suspense, useEffect, useRef, useState } from 'react';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import {
@@ -13,37 +13,132 @@ import theme from '../styles/theme';
 interface BoundaryWallsProps {
   extentX: number;
   extentY: number;
+  balls: BallType[];
 }
 
 interface WallProp {
   position: [number, number, number];
   args: [number, number, number];
+  color: string;
+  normal: THREE.Vector3; // Normal vector to help with collision detection direction
 }
 
-const BoundaryWalls: React.FC<BoundaryWallsProps> = ({ extentX, extentY }) => {
+const Wall: React.FC<{ props: WallProp; balls: BallType[] }> = ({ props, balls }) => {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const [flashIntensity, setFlashIntensity] = useState(0);
+
+  useFrame(() => {
+    if (!meshRef.current || !materialRef.current) return;
+
+    // Decay flash
+    if (flashIntensity > 0) {
+      setFlashIntensity(prev => Math.max(0, prev - 0.1));
+    }
+
+    // Check collisions using LOCAL coordinates
+    // The wall is axis-aligned in local space.
+    // props.position is the center. props.args is [width, height, depth].
+    
+    const halfWidth = props.args[0] / 2;
+    const halfHeight = props.args[1] / 2;
+    // We ignore depth for hit detection, just check 2D plane proximity
+    
+    const wallX = props.position[0];
+    const wallY = props.position[1];
+    
+    let hit = false;
+    for (const ball of balls) {
+      if (!ball || ball.r3fX === undefined || ball.r3fY === undefined) continue;
+      
+      // Check if ball is within the bounds of the wall (plus radius/margin)
+      // Since walls are thin rectangles at the edges:
+      
+      // Calculate distance from ball center to wall center
+      const dx = Math.abs(ball.r3fX - wallX);
+      const dy = Math.abs(ball.r3fY - wallY);
+      
+      // Check if ball overlaps with the wall rectangle
+      // We add a small margin (e.g. 1.0) to make the flash more visible/forgiving
+      const margin = 1.0; 
+      const hitX = dx < (halfWidth + ball.radius + margin);
+      const hitY = dy < (halfHeight + ball.radius + margin);
+      
+      if (hitX && hitY) {
+         hit = true;
+         break;
+      }
+    }
+
+    if (hit && flashIntensity === 0) {
+      setFlashIntensity(1.0);
+    }
+
+    // Apply flash
+    if (materialRef.current) {
+        // Base color is props.color
+        // Emissive color is White * intensity
+        materialRef.current.emissive.setHex(0xffffff);
+        materialRef.current.emissiveIntensity = flashIntensity;
+    }
+  });
+
+  return (
+    <mesh ref={meshRef} position={props.position} receiveShadow>
+      <boxGeometry args={props.args} />
+      <meshStandardMaterial
+        ref={materialRef}
+        color={props.color}
+        roughness={0.85}
+        metalness={0.05}
+      />
+    </mesh>
+  );
+};
+
+const BoundaryWalls: React.FC<BoundaryWallsProps> = ({ extentX, extentY, balls }) => {
   const wallThickness = theme.sizes.boundaryWallThickness;
   const wallDepth = theme.sizes.boundaryWallDepth;
 
   const wallProps: WallProp[] = useMemo(() => [
-    { position: [0, extentY + wallThickness / 2, wallDepth / 2], args: [extentX * 2 + wallThickness * 2, wallThickness, wallDepth] },
-    { position: [0, -extentY - wallThickness / 2, wallDepth / 2], args: [extentX * 2 + wallThickness * 2, wallThickness, wallDepth] },
-    { position: [-extentX - wallThickness / 2, 0, wallDepth / 2], args: [wallThickness, extentY * 2, wallDepth] },
-    { position: [extentX + wallThickness / 2, 0, wallDepth / 2], args: [wallThickness, extentY * 2, wallDepth] },
+    // Top Wall (Player 1 - Green)
+    { 
+        position: [0, extentY + wallThickness / 2, wallDepth / 2], 
+        args: [extentX * 2 + wallThickness * 2, wallThickness, wallDepth],
+        color: theme.colors.player1,
+        normal: new THREE.Vector3(0, -1, 0)
+    },
+    // Bottom Wall (Player 0 - Blue) -> Swapped to Red based on user feedback? 
+    // Wait, if user says "Blue and Red is swapped", and I had Bottom=Blue, Right=Red.
+    // Maybe they want Bottom=Red, Right=Blue? 
+    // Or maybe the *positions* of players 0 and 3 are swapped in the game logic?
+    // Let's try swapping the colors as requested.
+    { 
+        position: [0, -extentY - wallThickness / 2, wallDepth / 2], 
+        args: [extentX * 2 + wallThickness * 2, wallThickness, wallDepth],
+        color: theme.colors.player3, // Was player0
+        normal: new THREE.Vector3(0, 1, 0)
+    },
+    // Left Wall (Player 2 - Yellow)
+    { 
+        position: [-extentX - wallThickness / 2, 0, wallDepth / 2], 
+        args: [wallThickness, extentY * 2, wallDepth],
+        color: theme.colors.player2,
+        normal: new THREE.Vector3(1, 0, 0)
+    },
+    // Right Wall (Player 3 - Red)
+    { 
+        position: [extentX + wallThickness / 2, 0, wallDepth / 2], 
+        args: [wallThickness, extentY * 2, wallDepth],
+        color: theme.colors.player0, // Was player3
+        normal: new THREE.Vector3(-1, 0, 0)
+    },
   ], [extentX, extentY, wallThickness, wallDepth]);
 
   return (
     <group>
-      {wallProps.map((props: WallProp, index) => (
-        <mesh key={`boundary-${index}`} position={props.position} receiveShadow>
-          <boxGeometry args={props.args} />
-          <meshStandardMaterial
-            color={theme.colors.boundaryWall}
-            emissive={theme.colors.boundaryWallEmissive}
-            emissiveIntensity={0}
-            roughness={0.85}
-            metalness={0.05}
-          />
-        </mesh>
+      {wallProps.map((props, index) => (
+        <Wall key={`boundary-${index}`} props={props} balls={balls} />
       ))}
     </group>
   );
@@ -211,8 +306,8 @@ const R3FCanvas: React.FC<R3FCanvasProps> = ({
 
       {canRenderGame && (
         <Suspense fallback={null}>
-          <BoundaryWalls extentX={boundaries.extentX} extentY={boundaries.extentY} />
           <group rotation={[0, 0, rotationAngle]}>
+            <BoundaryWalls extentX={boundaries.extentX} extentY={boundaries.extentY} balls={balls} />
             {brickStates.map((brickState, index) =>
               brickState.type !== 2 ? (
                 <Brick3D

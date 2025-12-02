@@ -129,7 +129,7 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
   const lastSentMobileLogicalDir = useRef<DirectionMessage['direction'] | null>(null);
   const lastSentLogicalKeyboardDir = useRef<DirectionMessage['direction'] | null>(null);
   
-  const { sendMessage, gameState, connectionStatus } = useGame();
+  const { sendMessage, gameState, connectionStatus, sessionId } = useGame();
 
   const {
     originalPlayers,
@@ -142,6 +142,32 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
     phase,
     countdownSeconds,
   } = gameState;
+
+  // --- Reconnection / Join Logic ---
+  const hasSentJoinRequest = useRef(false);
+
+  // Reset request flag if connection drops
+  useEffect(() => {
+    if (connectionStatus !== 'open') {
+      hasSentJoinRequest.current = false;
+    }
+  }, [connectionStatus]);
+
+  useEffect(() => {
+    if (connectionStatus === 'open' && code && !hasSentJoinRequest.current) {
+      // If we are not yet assigned a player index (or if we are reconnecting), try to join.
+      // Even if we have an index, sending joinRoom is safe/idempotent.
+      console.log(`[GameRoom] Sending joinRoom request for ${code}`);
+      
+      const req = { 
+        messageType: 'joinRoom', 
+        code, 
+        sessionId 
+      };
+      sendMessage(JSON.stringify(req));
+      hasSentJoinRequest.current = true;
+    }
+  }, [connectionStatus, code, sendMessage, sessionId]);
 
   const rotationDegrees = usePlayerRotation(myPlayerIndex);
   const rotationRadians = useMemo(() => THREE.MathUtils.degToRad(rotationDegrees), [rotationDegrees]);

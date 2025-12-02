@@ -77,15 +77,18 @@ export type VisualDirection = 'ArrowLeft' | 'ArrowRight' | 'Stop';
 export interface CreateRoomRequest {
   messageType: 'createRoom';
   isPublic: boolean;
+  sessionId: string;
 }
 
 export interface JoinRoomRequest {
   messageType: 'joinRoom';
   code: string;
+  sessionId: string;
 }
 
 export interface QuickPlayRequest {
   messageType: 'quickPlay';
+  sessionId: string;
 }
 
 export interface RoomCreatedResponse {
