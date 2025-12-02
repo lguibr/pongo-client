@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useEffect } from 'react';
+import nipplejs from 'nipplejs';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as THREE from 'three';
 import styled, { DefaultTheme } from 'styled-components';
@@ -12,8 +13,7 @@ import {
 } from '../types/game';
 import { useInputHandler } from '../hooks/useInputHandler';
 import { usePlayerRotation } from '../utils/rotation';
-import { getPlayerColorName } from '../utils/colors';
-import { useWindowSize } from '../hooks/useWindowSize';
+import { getPlayerColorName, getPaddleColorByPlayerIndex } from '../utils/colors';
 import { useGame } from '../context/GameContext';
 import { Button } from './common/Button';
 import { Typography } from './common/Typography';
@@ -78,46 +78,14 @@ const GameOverOverlay = styled.div<{ theme: DefaultTheme }>`
   gap: 1.5rem;
 `;
 
-const MobileControlsContainer = styled.div<{ theme: DefaultTheme }>`
+const JoystickZone = styled.div`
   position: absolute;
-  bottom: 0;
+  top: 0;
   left: 0;
-  right: 0;
-  height: var(--controls-height);
-  display: flex;
-  gap: 1rem;
-  padding: 1rem;
-  flex-shrink: 0;
-  z-index: 30;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  justify-content: space-around;
-  padding-bottom: max(env(safe-area-inset-bottom, 20px), 20px);
-  background: linear-gradient(to top, ${({ theme }) => theme.colors.background}, transparent);
-`;
-
-const ControlButton = styled.button<{ theme: DefaultTheme; isActive: boolean }>`
-  flex: 1;
+  width: 100%;
   height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: ${({ theme, isActive }) => isActive ? theme.colors.primary : theme.colors.secondary};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.sizes.borderRadius};
-  color: ${({ theme }) => theme.colors.foreground};
-  font-size: 2rem;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.1s ease-out;
-  outline: none;
-  transform: ${({ isActive }) => isActive ? 'scale(0.98)' : 'scale(1)'};
-  box-shadow: 0 4px 0 ${({ theme }) => theme.colors.background};
-
-  &:active {
-    transform: scale(0.98);
-  }
+  z-index: 40; /* Above canvas but below overlays */
+  touch-action: none; /* Prevent scrolling */
 `;
 
 const CountdownOverlay = styled.div<{ theme: DefaultTheme }>`
@@ -152,13 +120,14 @@ interface GameRoomProps {
 export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
-  const { width } = useWindowSize();
-  const isMobileView = useMemo(() => width < 768, [width]);
+  // Check for touch capability instead of just screen width
+  const isTouchDevice = useMemo(() => {
+    return (('ontouchstart' in window) ||
+      (navigator.maxTouchPoints > 0));
+  }, []);
 
   const lastSentMobileLogicalDir = useRef<DirectionMessage['direction'] | null>(null);
   const lastSentLogicalKeyboardDir = useRef<DirectionMessage['direction'] | null>(null);
-  const [leftActive, setLeftActive] = useState(false);
-  const [rightActive, setRightActive] = useState(false);
   
   const { sendMessage, gameState, connectionStatus } = useGame();
 
@@ -213,8 +182,6 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
   }, [myPlayerIndex]);
 
   const handleKeyboardVisualChange = useCallback((visualDir: VisualDirection) => {
-    setLeftActive(visualDir === 'ArrowLeft');
-    setRightActive(visualDir === 'ArrowRight');
     const logicalDir = mapDirection(visualDir);
     sendLogicalDirectionMessage(logicalDir, 'kb');
   }, [mapDirection, sendLogicalDirectionMessage]);
@@ -224,24 +191,57 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
     onVisualDirectionChange: handleKeyboardVisualChange,
   });
 
-  const handleTouchStart = useCallback((visualDir: 'ArrowLeft' | 'ArrowRight') => (e: React.TouchEvent) => {
-    e.preventDefault();
-    resumeContext();
-    if (!isGameActive) return;
-    if (visualDir === 'ArrowLeft') setLeftActive(true);
-    if (visualDir === 'ArrowRight') setRightActive(true);
-    const logicalDir = mapDirection(visualDir);
-    sendLogicalDirectionMessage(logicalDir, 'mobile');
-  }, [mapDirection, sendLogicalDirectionMessage, isGameActive, resumeContext]);
+  // Nipple.js Integration
+  const joystickManagerRef = useRef<nipplejs.JoystickManager | null>(null);
+  const joystickZoneRef = useRef<HTMLDivElement>(null);
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
-    if (!isGameActive) return;
-    setLeftActive(false);
-    setRightActive(false);
-    const logicalDir = mapDirection('Stop');
-    sendLogicalDirectionMessage(logicalDir, 'mobile');
-  }, [mapDirection, sendLogicalDirectionMessage, isGameActive]);
+  useEffect(() => {
+    if (!isTouchDevice || phase !== 'playing' || !joystickZoneRef.current) return;
+
+    // Initialize nipplejs
+    const manager = nipplejs.create({
+      zone: joystickZoneRef.current,
+      mode: 'dynamic',
+      color: getPaddleColorByPlayerIndex(myPlayerIndex ?? 0),
+      size: 100,
+      threshold: 0.1,
+      fadeTime: 250,
+      multitouch: false, // Single joystick
+    });
+
+    joystickManagerRef.current = manager;
+
+    manager.on('move', (_, data) => {
+      resumeContext();
+      if (!isGameActive) return;
+
+      // data.vector.x is between -1 and 1 (mostly)
+      // nipplejs provides angle and force too, but vector is convenient
+      const x = data.vector.x;
+      const threshold = 0.2;
+
+      let visualDir: VisualDirection = 'Stop';
+      if (x < -threshold) {
+        visualDir = 'ArrowLeft';
+      } else if (x > threshold) {
+        visualDir = 'ArrowRight';
+      }
+
+      const logicalDir = mapDirection(visualDir);
+      sendLogicalDirectionMessage(logicalDir, 'mobile');
+    });
+
+    manager.on('end', () => {
+      if (!isGameActive) return;
+      const logicalDir = mapDirection('Stop');
+      sendLogicalDirectionMessage(logicalDir, 'mobile');
+    });
+
+    return () => {
+      manager.destroy();
+      joystickManagerRef.current = null;
+    };
+  }, [isTouchDevice, phase, theme.colors.primary, isGameActive, mapDirection, sendLogicalDirectionMessage, resumeContext]);
 
   const renderCountdown = () => {
     if (phase !== 'countingDown' || countdownSeconds === null) return null;
@@ -349,27 +349,8 @@ export const GameRoom: React.FC<GameRoomProps> = ({ theme, resumeContext }) => {
           ))}
       </ScoreBoard>
 
-      {isMobileView && phase === 'playing' && (
-        <MobileControlsContainer theme={theme}>
-          <ControlButton
-            theme={theme}
-            isActive={leftActive}
-            onTouchStart={handleTouchStart('ArrowLeft')}
-            onTouchEnd={handleTouchEnd}
-            disabled={!isGameActive}
-          >
-            ◀
-          </ControlButton>
-          <ControlButton
-            theme={theme}
-            isActive={rightActive}
-            onTouchStart={handleTouchStart('ArrowRight')}
-            onTouchEnd={handleTouchEnd}
-            disabled={!isGameActive}
-          >
-            ▶
-          </ControlButton>
-        </MobileControlsContainer>
+      {isTouchDevice && phase === 'playing' && (
+        <JoystickZone ref={joystickZoneRef} />
       )}
     </>
   );
