@@ -233,7 +233,6 @@ export function useGameState(
       if (isPlayerAssignment(data)) {
         console.log(`[${timestamp}][GameState] Assigning Player Index: ${data.playerIndex}`);
         setMyPlayerIndex(data.playerIndex);
-        setGameOverInfo(null);
         isGameOverRef.current = false;
         setBrickStates([]);
         prevBrickStatesRef.current = [];
@@ -260,9 +259,13 @@ export function useGameState(
       } else if (isGameStartCountdown(data)) {
         setPhase('countingDown');
         setCountdownSeconds(data.seconds);
+        setGameOverInfo(null); // Clear Game Over screen when countdown starts
+        setGameOverInfo(null); // Clear Game Over screen when countdown starts
       } else if (isGameStarted(data)) {
         setPhase('playing');
         setCountdownSeconds(null);
+        setGameOverInfo(null); // Clear Game Over screen when game starts
+        setGameOverInfo(null); // Clear Game Over screen when game starts
       } else if (isGameStartCancelled(data)) {
         setPhase('lobby');
         setCountdownSeconds(null);
@@ -325,9 +328,13 @@ export function useGameState(
           } else if (isGameStartCountdown(update)) {
              setPhase('countingDown');
              setCountdownSeconds(update.seconds);
+             setGameOverInfo(null); // Clear Game Over screen when countdown starts
+             setGameOverInfo(null); // Clear Game Over screen when countdown starts
           } else if (isGameStarted(update)) {
              setPhase('playing');
              setCountdownSeconds(null);
+             setGameOverInfo(null); // Clear Game Over screen when game starts
+             setGameOverInfo(null); // Clear Game Over screen when game starts
           } else if (isGameStartCancelled(update)) {
              setPhase('lobby');
              setCountdownSeconds(null);
