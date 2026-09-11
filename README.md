@@ -1,123 +1,137 @@
+<img src="bitmap.png" alt="The PonGo logo" width="400" />
 
-<img
-  src="https://raw.githubusercontent.com/lguibr/pongo-client/main/bitmap.png"
-  alt="screenshot"
-  width="400"
-/>
+# PonGo client
 
-This directory contains the React frontend for the PonGo game, built with Vite and **React Three Fiber (R3F)**. It displays the game state received from the backend via WebSockets, handles user input for paddle control, and renders the game elements using WebGL.
+The browser client for PonGo, a four-player Pong and Breakout arena. The interface is React 18 with
+styled-components. The arena is React Three Fiber on three.js, with postprocessing for bloom and grading, and Tone
+plays the music. The client talks to the PonGo game server over one WebSocket, and the wire protocol is frozen:
+`src/protocol/messages.ts` mirrors the server's messages exactly.
 
-## WebSocket Communication & State Management
+## Requirements
 
-The frontend communicates with the backend using WebSockets.
+- Node 22 and Yarn 1.22.
+- A PonGo game server. Local work expects it at `ws://localhost:8080/subscribe`.
 
-1.  **Initial Connection:** Upon connecting, the client receives initial messages directly:
-    *   `PlayerAssignmentMessage`: Assigns the client a player index (0-3).
-    *   `InitialPlayersAndBallsState`: Provides the state of entities already present in the room (using original backend coordinates and pre-calculated R3F coordinates).
-    *   The client waits for the first `GameUpdatesBatch` containing a `FullGridUpdate` to receive the initial grid state and dimensions.
-2.  **Real-time Updates:** After initialization, the backend sends a continuous stream of `GameUpdatesBatch` messages. Each batch contains an array of **atomic updates** reflecting changes that occurred on the backend since the last batch.
-    *   `PaddlePositionUpdate`, `BallPositionUpdate`, `BallSpawned`, `PlayerJoined` now include pre-calculated `r3fX`, `r3fY` coordinates suitable for direct rendering in the R3F scene (centered origin, Y-up).
-    *   `FullGridUpdate` contains a flat list of `BrickStateUpdate` objects representing the state (life, type) and final R3F coordinates (`x`, `y`) of **every** cell in the grid.
-3.  **Game Over:** A `GameOverMessage` is sent when the game concludes.
-
-The `App.tsx` component manages the game state via the `useGameState` hook:
-*   It stores the **original, unrotated** game state (player info, paddle data, ball data) including the R3F coordinates received from the backend updates.
-*   It stores the flat list of `brickStates` received from `FullGridUpdate`.
-*   It calculates the required scene `rotationAngle` (in radians) based on `myPlayerIndex` using the `usePlayerRotation` hook.
-*   The `originalPaddles`, `originalBalls`, `brickStates`, `cellSize`, and the `rotationAngle` are passed as props to the `R3FCanvas` component for rendering.
-
-## Rendering & Visuals (React Three Fiber)
-
-The game area is rendered using WebGL managed by React Three Fiber.
-
-*   **Canvas:** An R3F `<Canvas>` component.
-*   **Camera:** A static `<PerspectiveCamera>` provides a slightly angled top-down view, looking at the scene origin (0,0,0).
-*   **Scene Rotation:** A parent `<group>` element wraps all game entities (paddles, balls, bricks). This group's Z-rotation is set based on the `rotationAngle` calculated from the player's index. This rotates the entire game view so the player's paddle effectively appears at the bottom.
-*   **Entities:** Paddles, Balls, and Bricks are rendered as 3D meshes (`<Paddle3D>`, `<Ball3D>`, `<Brick3D>`) inside the rotated parent group.
-    *   They are positioned directly using their **pre-calculated R3F coordinates** (`r3fX`/`r3fY` for paddles/balls, `x`/`y` for bricks) received from the backend. The parent group's rotation handles the visual orientation for the player.
-*   **Lighting:** Basic ambient and directional lights illuminate the scene.
-*   **Effects:** Collision highlights are implemented using emissive material properties and point lights.
-
-## Input Handling
-
-User input (keyboard arrows, touch controls) controls the paddle.
-
-*   **Keyboard:** The `useInputHandler` hook tracks `ArrowLeft`/`ArrowRight` presses using an `InputQueue`. It determines the current *visual* direction (the direction the user intends based on the screen, e.g., "move left on screen").
-*   **Touch:** Simple touch buttons mimic `ArrowLeft`/`ArrowRight` visual directions.
-*   **Mapping:** `App.tsx` maps the *visual* direction (from keyboard or touch) to the *logical* direction required by the backend. This mapping depends on the player's index and the current scene rotation. For example, if the scene is rotated 90 degrees for Player 0, pressing the visual 'ArrowLeft' key actually needs to send the logical 'ArrowRight' command to the backend to move the paddle correctly relative to its original orientation.
-*   **Sending:** The mapped logical direction (`ArrowLeft`, `ArrowRight`, or `Stop`) is sent to the backend via WebSocket.
-
-This ensures controls feel intuitive ("left means left on screen") regardless of the player's position and the applied visual rotation.
-
-## Tech Stack
-
-*   React 19
-*   TypeScript
-*   Vite
-*   **React Three Fiber (`@react-three/fiber`)**
-*   **Three.js**
-*   **Drei (`@react-three/drei`)** (Helpers for R3F)
-*   Styled Components (for UI outside the R3F canvas)
-*   `react-use-websocket`
-*   Custom Hooks (`useWindowSize`, `useInputHandler`, `useGameState`, `usePlayerRotation`)
-*   Utility Functions (`src/utils/`)
-*   ESLint + Prettier
-*   Vitest (setup pending)
-
-## Project Structure
-
-```
-pongo-client/
-├── src/
-│   ├── components/  # React components (R3FCanvas, Ball3D, Brick3D, Paddle3D, StatusOverlay)
-│   ├── hooks/       # Custom React hooks (useInputHandler, useWindowSize, useGameState, InputQueue)
-│   ├── styles/      # Styling-related files (Theme, GlobalStyle)
-│   ├── types/       # TypeScript type definitions
-│   ├── utils/       # Utility functions (constants, colors, rotation, coords)
-│   ├── App.tsx      # Main application component (renders UI/Canvas)
-│   ├── index.css    # Base CSS
-│   ├── main.tsx     # Application entry point
-│   └── vite-env.d.ts
-├── public/
-│   └── bitmap.png
-├── .gitignore
-├── eslint.config.js
-├── package-lock.json
-├── package.json
-├── prettier.config.js
-├── README.md       # This file
-├── tsconfig.app.json
-├── tsconfig.json
-├── tsconfig.node.json
-└── vite.config.ts
-```
-
-## Getting Started
-
-1.  `cd pongo-client`
-2.  `npm install`
-3.  `npm run dev` (Starts frontend, usually on `http://localhost:5173`)
-4.  Ensure the Go backend is running (See [Backend README](https://github.com/lguibr/pongo/blob/main/README.md)).
-
-## Available Scripts
-
-*   `npm run dev`: Start dev server.
-*   `npm run build`: Build for production.
-*   `npm run lint`: Lint code.
-*   `npm run preview`: Preview production build.
-*   `npm run test`: Run tests.
-
-## Building for Production
+## Getting started
 
 ```bash
-npm run build
+yarn install
+cp .env.example .env.local   # VITE_WS_URL=ws://localhost:8080/subscribe
+yarn dev                     # http://localhost:5173
 ```
 
-Creates a `dist` folder.
+## Scripts
 
-## Related Modules
+| Command | What it does |
+|---|---|
+| `yarn dev` | The Vite dev server on port 5173. There is no service worker in development; stale ones are removed at boot. |
+| `yarn build` | Type check (`tsc -b`), then the production build into `dist/`, with the service worker. |
+| `yarn preview` | Serves `dist/` on port 4173. |
+| `yarn lint` | ESLint over the repository. |
+| `yarn test` | Vitest in watch mode. |
+| `yarn test:run` | The whole suite, once. |
+| `yarn record --scenario <name>` | Records a fixture from a local server (see [Recording fixtures](#recording-fixtures)). |
 
-*   [PonGo Backend](https://github.com/lguibr/pongo/blob/main/README.md)
-*   [PonGo Game Logic](https://github.com/lguibr/pongo/blob/main/game/README.md)
-*   [Bollywood Actor Library](https://github.com/lguibr/bollywood) (External Dependency)
-*   [Main Project](https://github.com/lguibr/pongo)
+## Configuration
+
+| Variable | Meaning |
+|---|---|
+| `VITE_WS_URL` | The WebSocket endpoint. When it is unset, development uses `ws://<page host>:8080/subscribe`, and a build uses the production endpoint (`PROD_WS_URL` in `src/config/env.ts`). Development never falls through to production. |
+
+## Debug flags
+
+| Flag | Effect |
+|---|---|
+| `?debug=1` | Turns on the logger and the protocol trail (always on in development) and opens the debug overlay. The overlay shows frames and bytes per second, playout delay and jitter, snaps, ticks per batch, queued and stale events, fps, scene and post draw calls (the scene budget is 12), triangles, programs, the quality tier and context health, effect pool use, audio voices, input sends and the last protocol messages. Its "Own-paddle lead" box switches the own-paddle lead at runtime; the lead ships switched off. The flag is read when the page loads, so it stays on across navigation. |
+| `?tune=path:value,...` | Development only. Overrides any value in `src/config/tuning.ts`, for example `?tune=hitStop.enabled:0,playout.minDelayMs:40`. Production ignores it. |
+
+## Development pages
+
+These pages exist on the dev server only and are not part of the build.
+
+| Page | What it shows |
+|---|---|
+| `/replay.html?fixture=<name>&client=<A\|B\|C>&speed=<n>` | A recorded fixture played at its recorded timing through the real game runtime and render core, with a derivation overlay. |
+| `/fx.html` | The effects playground: fires each effect on demand and switches the quality tier and reduced motion. `?fixture=<name>` replays a fixture through the full effects director. |
+| `/ui.html` | The UI gallery: every room view rendered from fake app states. `?view=<id>` shows one view, and `?motion=reduced` applies reduced motion. |
+
+## Tests
+
+- Vitest runs in the `node` environment by default. DOM tests opt in with `/** @vitest-environment jsdom */`.
+- Workers run with `--expose-gc`, which backs the zero-allocation checks.
+- Run one area with an explicit path, for example `yarn vitest run src/session`.
+- The fixture replays read `src/test/fixtures/*.jsonl` through `import.meta.glob`.
+- The ingest benchmark runs with `yarn vitest bench src/game/ingest.bench.ts`.
+
+## Recording fixtures
+
+```bash
+node scripts/record-frames.mjs --scenario <name> [--url ws://localhost:8080/subscribe] [--out src/test/fixtures/<name>.jsonl]
+```
+
+The scenarios are `quick-solo`, `lobby-2p`, `grace`, `late-join`, `rejections` and `game-over`. Each line is
+`{"t": <ms since start>, "c": "A" | "B" | "C", "dir": "in" | "out", "d": "<raw text>"}`. The script sends only the
+five existing client messages and accepts loopback servers only; never record against the production endpoint.
+The Quick Play scenarios need a server with no open public rooms. The committed `game-over` fixture is trimmed: it
+keeps the admission frames and the last 60 seconds before `gameOver`, and `FIXTURE_GAPS` in
+`src/test/fixtures/load.ts` declares the jump.
+
+## How it works
+
+One server batch and one display frame each take a fixed path, and React is kept out of both.
+
+1. **Transport** (`src/net/transport.ts`) owns one WebSocket per generation. Frames from an older generation are
+   dropped.
+2. **Session** (`src/session/`) is a pure state machine, `transition(model, input, env)`, run by an interpreter
+   that owns named, tokened timers. The session runtime decodes each frame once (`src/net/decode.ts`, one
+   `JSON.parse`) and routes it. It handles admission, rejections, reconnection with backoff, liveness, page
+   lifecycle and a per-tab identity held through Web Locks.
+3. **Game runtime** (`src/game/`) applies each decoded batch to a World kept in typed arrays. It keeps a ring of
+   64 tick snapshots and a playout clock in the tick domain. Gameplay events are derived from state
+   diffs, each with a confidence value, and released in tick order when display time reaches them.
+4. **Frame loop** (`src/render/loop.ts`): a single `useFrame` advances the clock, samples the ring, and runs the
+   entity systems, the effects director (`src/fx/`), the camera and one composer render. That comes to at most
+   12 scene draws.
+5. **Audio** (`src/audio/`): one `AudioContext`, created on the first gesture. Cues are scheduled on the display
+   timeline, and Tone is loaded lazily for the music.
+6. **UI** (`src/ui/`) reads `appStore` slices through `useSyncExternalStore`. A plain batch causes no React commit.
+
+`src/app/runtime.ts` is the composition root: it builds every singleton once, wires the ports and undoes it all
+on dispose, including on a hot update. `src/main.tsx` boots it and mounts the router.
+
+### Routes
+
+| Path | Screen |
+|---|---|
+| `/` | Landing: create, join by code, Quick Play, the rules. It never opens a socket. |
+| `/room/:code?` | The room, lazy-loaded with the 3D stack. This is the only route that opens a socket, and the canvas stays mounted for the whole room, rejoins included. |
+| `/lobby/:code`, `/game/:code` | Legacy links, redirected to `/room/:code`. |
+| `/lobby/create`, `/lobby/quickplay` | Redirected to `/`, so a bookmark never creates a room. |
+| anything else | Not found. |
+
+### Layout
+
+```
+src/
+  app/        composition root and App context
+  audio/      audio engine, unlock, cues, samples, synth voices, music
+  config/     server mirror constants, tuning, palette, environment
+  dev/        the ?debug=1 overlay
+  fx/         effects director, GPU particle pools, trails, shells, score pops, playground
+  game/       World, segmentation, derivation, radius inference, seats, playout, interpolation, queue
+  input/      keyboard, touch joystick, input controller
+  lib/        store, timers, storage, settings, logger, math
+  net/        decode, encode, transport, room codes
+  protocol/   wire types
+  render/     canvas host, frame loop, camera, quality, context loss, materials, systems, post
+  session/    machine, runtime, policy, identity, lifecycle
+  state/      app store slices, hooks, debug counters
+  test/       fakes, fixtures, setup
+  ui/         shell, landing, room views, dialogs, PWA prompt
+```
+
+## Service worker
+
+The service worker runs in prompt mode. An update applies by itself only when the session is idle on `/`. In a
+room, an "Update ready" chip shows, and the update applies after the match. `public/sw-migrate.js` hands over once
+from the legacy auto-update worker, so tabs of the old build pick up the new one without being closed.
