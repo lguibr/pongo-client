@@ -3,25 +3,19 @@
 
 <head>
   <meta charset="UTF-8" />
-  <!-- Make sure you have a general favicon, PWA icons will be specified in manifest -->
-  <link rel="icon" type="image/png" href="/bitmap.png" />
+  <link rel="icon" type="image/png" href="/icons/favicon-32x32.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-
-  <!-- PWA related tags will be injected by vite-plugin-pwa -->
-  <!-- For example: -->
-  <!-- <link rel="manifest" href="/manifest.json"> -->
-  <!-- <meta name="theme-color" content="#000000"> -->
-
-  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#09090b" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>PonGo</title>
-  <meta name="description" content="PonGo - A multiplayer Pong-like game with bricks and mayhem!">
-
-  <!-- Apple touch icon (optional but good for iOS "Add to Home Screen") -->
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-
+  <meta name="description" content="PonGo - A four-player Pong and Breakout arena." />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 </head>
 
 <body>
+  <noscript>PonGo needs JavaScript to run. Enable it and reload the page.</noscript>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
